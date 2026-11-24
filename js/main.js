@@ -14,7 +14,8 @@
 
   let W = DW;   // 현재 논리 너비
   let OX = 0;   // 가운데 UI 영역의 왼쪽 오프셋
-  let scale = 1; // 논리 좌표 → 화면 픽셀
+  let scale = 1; // 논리 좌표 → CSS 픽셀
+  let pxk = 1;   // 논리 좌표 → 캔버스 실제 픽셀(고해상도 화면에서 글자가 선명하도록 기기 픽셀 수만큼 키운다)
 
   let screen = 'title'; // title | intro | name | shop
   let modal = null;     // null | help | settings
@@ -31,9 +32,11 @@
     const vw = window.innerWidth, vh = window.innerHeight;
     W = Math.max(CFG.MIN_W, Math.min(CFG.MAX_W, Math.round(H * vw / vh)));
     OX = (W - DW) / 2;
-    cv.width = W;
-    cv.height = H;
     scale = Math.min(vw / W, vh / H);
+    const dpr = Math.min(window.devicePixelRatio || 1, 3);
+    cv.width = Math.round(W * scale * dpr);
+    cv.height = Math.round(H * scale * dpr);
+    pxk = cv.width / W;
     wrap.style.width = Math.round(W * scale) + 'px';
     wrap.style.height = Math.round(H * scale) + 'px';
     fitInput();
@@ -48,15 +51,26 @@
   }
 
   // ---------- 작은 도구 ----------
+  // 도트 스프라이트를 작은 이미지로 한 번 만들어 두고 확대해서 그린다(칸마다 칠하면 틈이 생긴다).
+  const spriteCache = new Map();
   function sprite(rows, x, y, s) {
-    rows.forEach((row, j) => {
-      for (let i = 0; i < row.length; i++) {
-        const c = DATA.PALETTE[row[i]];
-        if (!c) continue;
-        ctx.fillStyle = c;
-        ctx.fillRect(x + i * s, y + j * s, s, s);
-      }
-    });
+    let img = spriteCache.get(rows);
+    if (!img) {
+      img = document.createElement('canvas');
+      img.width = rows[0].length;
+      img.height = rows.length;
+      const g = img.getContext('2d');
+      rows.forEach((row, j) => {
+        for (let i = 0; i < row.length; i++) {
+          const c = DATA.PALETTE[row[i]];
+          if (!c) continue;
+          g.fillStyle = c;
+          g.fillRect(i, j, 1, 1);
+        }
+      });
+      spriteCache.set(rows, img);
+    }
+    ctx.drawImage(img, x, y, img.width * s, img.height * s);
   }
 
   function won(n) { return n.toLocaleString('ko-KR') + '원'; }
@@ -159,10 +173,6 @@
     ctx.translate(OX, 0);
     UI.text(DATA.TITLE_LINES[0], 480, 58, 40, C.white, 'center', C.ink);
     UI.text(DATA.TITLE_LINES[1], 480, 112, 40, C.yellow, 'center', C.ink);
-    ctx.font = UI.font(20);
-    const sw = Math.ceil(ctx.measureText(DATA.SUBTITLE).width) + 40;
-    UI.glass({ x: 480 - sw / 2, y: 142, w: sw, h: 36 });
-    UI.text(DATA.SUBTITLE, 480, 161, 20, C.white);
     UI.button(L.startBtn, State.hasSave() ? '이어하기' : '시작하기', {
       style: 'primary',
       onClick: () => { if (State.hasSave()) go('shop'); else go('intro'); },
@@ -258,6 +268,8 @@
 
   function draw(ts) {
     now = (ts || 0) / 1000;
+    ctx.setTransform(pxk, 0, 0, pxk, 0, 0); // 이후 모든 그림은 논리 좌표(W×576)로 그린다
+    ctx.imageSmoothingEnabled = false;
     UI.begin(ctx, cv, modal);
     ctx.fillStyle = C.bg;
     ctx.fillRect(0, 0, W, H);

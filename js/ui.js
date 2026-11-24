@@ -115,7 +115,7 @@ const UI = (function () {
     const st = STYLE[o.disabled ? 'soft' : (o.style || 'primary')];
     const bw = BW.button;
     const tf = ctx.getTransform();
-    const abs = { x: b.x - bw + tf.e, y: b.y - bw + tf.f, w: b.w + bw * 2, h: b.h + bw * 2 };
+    const abs = { x: b.x - bw + tf.e / tf.a, y: b.y - bw + tf.f / tf.d, w: b.w + bw * 2, h: b.h + bw * 2 };
     const live = !modalOpen || o.modal;
     if (live) next.push(Object.assign(abs, { onClick: o.onClick, disabled: o.disabled }));
     const hover = live && !o.disabled && mouse.on &&

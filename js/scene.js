@@ -86,6 +86,106 @@ const Scene = (function () {
     [[12, 12, 36], [96, 6, 26], [158, 16, 42], [30, 40, 30], [196, 42, 32], [-44, 16, 34], [-20, 46, 28], [262, 10, 38], [272, 40, 30]].forEach((c) => cloud(c[0], c[1], c[2]));
   }
 
+  // ---------- 아레나(원통형 드럼 건물) ----------
+  // 지붕(잔디 링 + 천창) → 유리 외벽(세로 살대·층 구분선·반사) → 처마·기단 → 정문 캐노피와 계단
+  function drawArena(rnd) {
+    const CX = 120, TY = 44, RX = 56, RY = 10, BODY = 40;
+    const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+
+    // 바닥 테라스(계단 3단)
+    ellipse(CX, 88, 68, 15, P.terraceEdge);
+    ellipse(CX, 87, 66, 13, P.terraceA);
+    ellipse(CX, 87, 62, 11, P.terraceB);
+    ellipse(CX, 86, 60, 10, P.terraceA);
+
+    // 지붕: 콘크리트 테두리 + 잔디 링 + 가운데 천창
+    ellipse(CX, TY, RX + 1, RY + 1, P.outline);
+    ellipse(CX, TY, RX, RY, P.rimLight);
+    ellipse(CX, TY, RX - 4, RY - 3, P.roofDark);
+    ellipse(CX, TY, RX - 5, RY - 4, P.roof);
+    for (let i = 0; i < 70; i++) {
+      const a = rnd() * Math.PI * 2, r = 0.55 + rnd() * 0.4;
+      R(CX + Math.cos(a) * (RX - 6) * r, TY + Math.sin(a) * (RY - 4) * r, 1, 1, rnd() < 0.5 ? P.roofLight : P.roofDark);
+    }
+    ellipse(CX, TY, 34, 5, P.skylightEdge);
+    ellipse(CX, TY, 33, 4, P.skylight);
+    ellipse(CX - 4, TY - 1, 22, 2, P.skylightHi);
+    for (let x = CX - 28; x <= CX + 28; x += 7) R(x, TY - 3, 1, 7, P.skylightEdge); // 천창 살대
+    // 테두리 조명 점
+    for (let k = 0; k < 28; k++) {
+      const a = k / 28 * Math.PI * 2;
+      R(CX + Math.cos(a) * (RX - 1), TY + Math.sin(a) * (RY - 1), 1, 1, Math.sin(a) > 0 ? '#fff6c8' : '#ffffff');
+    }
+
+    // 외벽
+    for (let x = CX - RX; x <= CX + RX; x++) {
+      const dx = (x - CX) / RX;
+      const arc = Math.round(RY * Math.sqrt(Math.max(0, 1 - dx * dx)));
+      const top = TY + arc, bot = TY + BODY + arc;
+      // 둥근 몸통의 명암: 왼쪽 위가 밝고 오른쪽이 어둡다
+      const lit = clamp(1 - Math.abs(dx + 0.35) * 1.6, 0, 1);
+      const dark = clamp((dx - 0.05) * 0.7, 0, 0.55) + (dx < -0.8 ? 0.15 : 0);
+      const shadeTo = (hexc) => dark > 0 ? mix(hexc, P.glassShade, dark) : mix(hexc, '#ffffff', lit * 0.3);
+
+      // 처마(콘크리트 띠)
+      for (let y = top; y < top + 5; y++) R(x, y, 1, 1, shadeTo(y === top + 4 ? P.concreteShade : P.concrete));
+      // 유리면
+      const pane = Math.floor((x - (CX - RX)) / 4);
+      const mull = (x - (CX - RX)) % 4 === 0;
+      const gTop = top + 5, gBot = bot - 7;
+      const mid = Math.round((gTop + gBot) / 2);
+      for (let y = gTop; y <= gBot; y++) {
+        let base = mull ? P.glassShade : (pane % 2 ? P.glassMid : P.glassLight);
+        if (y > mid + 2) base = mull ? P.glassShade : (pane % 2 ? P.glassDeep : P.glassMid);
+        if (y === mid || y === mid + 1) base = P.glassShade;      // 층 구분선
+        let c = shadeTo(base);
+        if (!mull && ((x * 1 + y * 2) % 29) < 2 && y > gTop + 1 && y < gBot - 1) c = mix(base, '#ffffff', 0.45); // 사선 반사
+        R(x, y, 1, 1, c);
+      }
+      // 기단(콘크리트)
+      for (let y = bot - 6; y <= bot - 1; y++) R(x, y, 1, 1, shadeTo(y >= bot - 2 ? P.concreteDark : P.concreteShade));
+      R(x, bot, 1, 1, P.outline);
+    }
+    // 좌우 윤곽선
+    R(CX - RX, TY, 1, BODY + 1, P.outline);
+    R(CX + RX, TY, 1, BODY + 1, P.outline);
+    // 반짝이는 창(공연장 불빛)
+    for (let i = 0; i < 36; i++) {
+      const x = CX - 50 + Math.floor(rnd() * 100), y = 58 + Math.floor(rnd() * 24);
+      R(x, y, 1, 1, rnd() < 0.7 ? '#ffffff' : '#fff2b0');
+    }
+    // 외벽 위 대형 전광판 띠
+    const bx0 = CX - 20, by0 = 63;
+    R(bx0 - 1, by0 - 1, 42, 9, P.outline);
+    for (let i = 0; i < 40; i++) R(bx0 + i, by0, 1, 7, mix(P.led1, P.led2, i / 39));
+    for (let i = 0; i < 26; i++) R(bx0 + 1 + Math.floor(rnd() * 38), by0 + Math.floor(rnd() * 7), 1, 1, '#ffffff');
+
+    // 정문 캐노피와 문
+    R(CX - 19, 78, 38, 3, P.outline);
+    R(CX - 18, 78, 36, 2, P.concreteLight);
+    R(CX - 18, 80, 36, 1, P.concreteShade);
+    R(CX - 17, 81, 2, 11, P.concreteShade);
+    R(CX + 15, 81, 2, 11, P.concreteShade);
+    R(CX - 15, 81, 30, 11, P.outline);
+    R(CX - 14, 81, 28, 10, P.door);
+    for (let x = CX - 14; x <= CX + 14; x += 7) R(x, 81, 1, 10, P.doorFrame);
+    R(CX - 14, 85, 28, 1, P.doorFrame);
+    R(CX - 14, 81, 28, 1, '#fff6d0');
+
+    // 정문 앞 계단
+    [[CX - 21, 42, 92], [CX - 24, 48, 93], [CX - 27, 54, 94], [CX - 30, 60, 95]].forEach((st, i) => {
+      R(st[0], st[2], st[1], 1, i % 2 ? P.concreteShade : P.concreteLight);
+      R(st[0], st[2] + 1, st[1], 1, P.concreteDark);
+    });
+
+    // 양옆 깃발 기둥
+    [[CX - 40, 88], [CX + 40, 88]].forEach((f, i) => {
+      R(f[0], f[1] - 16, 1, 17, P.outline);
+      R(f[0] + 1, f[1] - 16, 7, 4, i ? '#4aa3f0' : '#ffd84a');
+      R(f[0] + 1, f[1] - 12, 7, 1, P.outline);
+    });
+  }
+
   // ---------- 앞 풍경 ----------
   function drawFront(ctx) {
     g = ctx;
@@ -128,6 +228,8 @@ const Scene = (function () {
       if (rnd() < 0.5) R(x0 + 3 + Math.floor(rnd() * (GW + EXT - x0 - 4)), y, 2, 1, '#d5f0fc');
     }
 
+    g.save();
+    g.translate(-18, 0); // 아레나 광장과 겹치지 않게 왼쪽으로 비킨다
     // 왼쪽 부속 건물 + LED 화면 + 작은 유리 돔
     R(28, 78, 38, 21, P.annex);
     R(28, 78, 38, 2, P.annexRoof);
@@ -141,38 +243,9 @@ const Scene = (function () {
       R(14 - half, y, 1, 1, '#5d88ab'); R(14 + half, y, 1, 1, '#5d88ab');
     }
     R(8, 88, 6, 1, P.domeHi); R(6, 90, 2, 2, P.domeHi);
+    g.restore();
 
-    // ----- 아레나 본체 -----
-    ellipse(120, 50, 54, 9, P.rim);
-    ellipse(120, 50, 51, 7, P.roof);
-    for (let i = 0; i < 40; i++) R(78 + Math.floor(rnd() * 84), 46 + Math.floor(rnd() * 8), 2, 1, P.roofDark);
-    ellipse(120, 49, 31, 4, P.oculus);
-    R(100, 47, 40, 1, P.oculusHi);
-    for (let x = 66; x <= 174; x++) {
-      const dx = (x - 120) / 54;
-      const arc = Math.round(9 * Math.sqrt(Math.max(0, 1 - dx * dx)));
-      const top = 50 + arc, bot = 86 + arc;
-      const ad = Math.abs(dx);
-      let base = (Math.floor((x - 66) / 3) % 2) ? P.glassB : P.glassA;
-      if (ad > 0.8) base = mix(base, P.glassEdge, 0.55);
-      else if (ad < 0.3) base = mix(base, '#ffffff', 0.35);
-      for (let y = top; y <= bot; y++) R(x, y, 1, 1, y > top + 15 ? mix(base, P.glassWarm, 0.28) : base);
-      R(x, top - 2, 1, 2, P.rimLight);
-      R(x, top + 15, 1, 1, P.ledge);
-      R(x, bot, 1, 1, P.outline);
-    }
-    R(66, 50, 1, 37, P.outline); R(174, 50, 1, 37, P.outline);
-    for (let i = 0; i < 90; i++) {
-      const x = 69 + Math.floor(rnd() * 102), y = 62 + Math.floor(rnd() * 28);
-      R(x, y, 1, 1, rnd() < 0.7 ? '#ffffff' : '#fff2b0');
-    }
-    // 아래쪽 곡선 테라스
-    for (let y = 88; y <= 104; y++) {
-      const half = Math.round(63 * Math.sqrt(Math.max(0, 1 - Math.pow((y - 93) / 11, 2))));
-      R(120 - half, y, half * 2, 1, y < 97 ? P.skirtTop : (y < 101 ? P.skirtMid : P.skirtDark));
-      R(120 - half - 1, y, 1, 1, P.outline); R(120 + half, y, 1, 1, P.outline);
-    }
-    R(111, 79, 18, 12, P.doorFrame); R(112, 80, 16, 10, P.door); R(119, 80, 2, 10, P.doorFrame);
+    drawArena(rnd);
 
     // 광장 길(아레나 입구에서 아래로)
     for (let y = 103; y < GH; y++) {
@@ -213,10 +286,6 @@ const Scene = (function () {
       circle(b[0] - 1, b[1] - 1, b[2] - 2, P.tree);
       circle(b[0] - 3, b[1] - 3, Math.max(2, Math.round(b[2] / 3)), P.treeLight);
     });
-
-    // 인형뽑기 기계(길 양옆)
-    sprite(DATA.CLAW_MACHINE, 28, 100);
-    sprite(DATA.CLAW_MACHINE, 196, 100);
 
     // 꽃
     const fl = ['#ff77a8', '#ffffff', '#ffd84a', '#c9a6ff'];

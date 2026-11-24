@@ -1,7 +1,6 @@
 // 게임 데이터(문구, 스프라이트 등)를 여기에 모은다.
 const DATA = {
   TITLE_LINES: ['인형뽑기 고수인 내가', '최고 랭크 사장이 되어보려고 합니다'],
-  SUBTITLE: '창동 아레나 인형뽑기 타이쿤',
   RANK_NAMES: ['동네 가게', '상권 대표', '도시 명소', '전국구', '세계구'],
 
   // 프롤로그(이름을 정하기 전까지의 이야기). 마지막 줄 다음에 이름 입력이 나온다.
@@ -59,6 +58,10 @@ const DATA = {
     glassA: '#9fd6e8', glassB: '#6ab6d6', glassEdge: '#3f7fa8', glassWarm: '#d9a9d6', ledge: '#3f6c8f', outline: '#2d4a66',
     skirtTop: '#dbe3eb', skirtMid: '#c3cdd8', skirtDark: '#98a7b8',
     door: '#ffe9a0', doorFrame: '#2d4a66',
+    terraceEdge: '#8d9db0', terraceA: '#e6ecf2', terraceB: '#cdd7e2',
+    concrete: '#eef2f6', concreteLight: '#ffffff', concreteShade: '#c9d3de', concreteDark: '#9eadbf',
+    glassLight: '#bfe8f7', glassMid: '#8fcfe8', glassDeep: '#63aed2', glassShade: '#3b7ea6',
+    roofLight: '#9fe09a', skylight: '#4f86e0', skylightEdge: '#2f5db3', skylightHi: '#9cc4f6',
     annex: '#e1e8ef', annexRoof: '#aab7c6', led1: '#7a5de0', led2: '#e06ad0',
     dome: '#cfe8f8', domeHi: '#ffffff',
     treeDark: '#2d7a47', tree: '#3f9a55', treeLight: '#6cc070', trunk: '#7a5230',
@@ -66,22 +69,20 @@ const DATA = {
   },
 };
 
-// 설정 톱니바퀴(15x15, 톱니 8개). 'a' 흰색, 'b' 아래쪽 그림자색
+// 설정 톱니바퀴(15x15, 좌우·상하 대칭). 'a' 흰색, 'b' 오른쪽 아래 그늘색
 DATA.GEAR = (function () {
-  const n = 15, c = 7, rows = [];
-  for (let y = 0; y < n; y++) {
+  const c = 7, rows = [];
+  for (let y = 0; y < 15; y++) {
     let row = '';
-    for (let x = 0; x < n; x++) {
-      const dx = x - c, dy = y - c, d = Math.sqrt(dx * dx + dy * dy);
-      let on = d <= 5;
-      for (let k = 0; k < 8 && !on; k++) {
-        const a = k * Math.PI / 4, ca = Math.cos(a), sa = Math.sin(a);
-        const along = dx * ca + dy * sa, perp = Math.abs(-dx * sa + dy * ca);
-        const half = k % 2 === 0 ? 1.6 : 1.1; // 가로세로 톱니는 굵게, 대각선은 가늘게
-        if (along >= 4 && along <= 7.4 && perp <= half) on = true;
-      }
-      if (d <= 2.4) on = false;
-      row += on ? (dx + dy > 3 ? 'b' : 'a') : '.';
+    for (let x = 0; x < 15; x++) {
+      const dx = x - c, dy = y - c, ax = Math.abs(dx), ay = Math.abs(dy);
+      const d = Math.sqrt(dx * dx + dy * dy);
+      let on = d <= 5.2;                                  // 몸통
+      if (ax <= 1 && ay >= 5) on = true;                  // 위·아래 톱니
+      if (ay <= 1 && ax >= 5) on = true;                  // 좌·우 톱니
+      if (ax >= 4 && ax <= 5 && ay >= 4 && ay <= 5) on = true; // 대각선 톱니(2x2)
+      if (d <= 2.5) on = false;                           // 가운데 구멍
+      row += on ? (dx + dy >= 5 ? 'b' : 'a') : '.';
     }
     rows.push(row);
   }
