@@ -6,7 +6,6 @@ const Scene = (function () {
   const LW = GW + EXT * 2;  // 레이어 전체 너비
   const P = DATA.SCENE_PAL;
   let g = null; // 현재 그리는 레이어의 컨텍스트
-  let layers = null;
 
   function makeLayer() {
     const c = document.createElement('canvas');
@@ -186,8 +185,67 @@ const Scene = (function () {
     });
   }
 
+  // ---------- 공사 중인 아레나(컷신용) ----------
+  function drawSite(rnd) {
+    const CX = 120, RX = 56, BODY = 40, RY = 10, TY = 44;
+    // 흙바닥
+    ellipse(CX, 90, 72, 16, '#a88a5c');
+    ellipse(CX, 89, 68, 13, '#c9ad80');
+    for (let i = 0; i < 90; i++) R(CX - 64 + Math.floor(rnd() * 128), 80 + Math.floor(rnd() * 20), 2, 1, rnd() < 0.5 ? '#b39565' : '#dcc497');
+    // 아직 낮은 콘크리트 골조(기둥 + 바닥판)
+    for (let x = CX - RX; x <= CX + RX; x++) {
+      const dx = (x - CX) / RX;
+      const arc = Math.round(RY * Math.sqrt(Math.max(0, 1 - dx * dx)));
+      const bot = TY + BODY + arc, top = bot - 26;
+      const col = (x - (CX - RX)) % 9 < 3;
+      const dark = Math.max(0, dx - 0.05) * 0.5;
+      for (let y = top; y <= bot; y++) {
+        let c = col ? P.concrete : '#6f8296';                       // 기둥 / 뚫린 칸
+        if (!col && y > top + 11 && y < top + 14) c = P.concreteShade; // 중간 바닥판
+        if (y <= top + 2 || y >= bot - 1) c = P.concreteShade;        // 위·아래 슬래브
+        R(x, y, 1, 1, dark > 0 ? mix(c.length === 7 ? c : '#6f8296', P.glassShade, dark) : c);
+      }
+      R(x, bot + 1, 1, 1, P.outline);
+    }
+    // 위로 삐죽 나온 철근
+    for (let x = CX - RX + 4; x < CX + RX; x += 9) {
+      const dx = (x - CX) / RX, arc = Math.round(RY * Math.sqrt(Math.max(0, 1 - dx * dx)));
+      const top = TY + BODY + arc - 26;
+      R(x, top - 12, 1, 12, '#8a5a3a');
+      R(x + 1, top - 8, 1, 8, '#a8744c');
+    }
+    // 비계(주황 파이프 격자)
+    for (let x = CX - 48; x <= CX + 48; x += 16) R(x, 52, 1, 46, '#f0a030');
+    [58, 70, 82].forEach((y) => R(CX - 48, y, 97, 1, '#f0a030'));
+    for (let x = CX - 48; x < CX + 48; x += 16) for (let k = 0; k < 12; k++) R(x + k, 58 + k, 1, 1, '#d98a20');
+    // 타워크레인(오른쪽)
+    for (let y = 8; y < 92; y++) {
+      R(160, y, 1, 1, '#ffd84a'); R(163, y, 1, 1, '#ffd84a');
+      if (y % 6 < 2) R(160, y, 4, 1, '#e0b020');
+    }
+    R(104, 8, 80, 2, '#ffd84a');
+    for (let x = 106; x < 182; x += 6) R(x, 10, 1, 2, '#e0b020');
+    R(176, 6, 10, 7, '#8795a5');
+    R(157, 10, 8, 6, '#ffffff'); R(158, 11, 6, 3, P.glassMid);
+    R(118, 10, 1, 30, '#44505c');
+    R(116, 40, 5, 3, '#ffd84a'); R(116, 43, 5, 1, '#44505c');
+    // 울타리(파랑·흰 패널) + 공사 안내 줄무늬
+    for (let x = 22; x < 218; x += 8) {
+      R(x, 99, 8, 7, '#4a90d9'); R(x, 99, 8, 1, '#ffffff'); R(x, 105, 8, 1, '#2f5f9f');
+      R(x + 7, 98, 1, 9, '#2d4a66');
+    }
+    for (let x = 90; x < 150; x += 6) { R(x, 94, 3, 4, '#ffd84a'); R(x + 3, 94, 3, 4, '#2d4a66'); }
+    // 완공 예정도 간판(왼쪽)
+    R(26, 62, 44, 28, P.outline); R(27, 63, 42, 26, '#ffffff');
+    R(29, 65, 38, 22, '#cfe8f8');
+    ellipse(48, 76, 13, 3, '#dfe6ee'); R(36, 76, 25, 6, '#9fd6e8'); ellipse(48, 82, 13, 3, '#7ab8d6');
+    ellipse(48, 76, 12, 2, '#78c47a');
+    R(32, 66, 6, 3, '#ffffff'); R(55, 67, 8, 3, '#ffffff');
+    R(36, 90, 2, 8, '#2d4a66'); R(58, 90, 2, 8, '#2d4a66');
+  }
+
   // ---------- 앞 풍경 ----------
-  function drawFront(ctx) {
+  function drawFront(ctx, variant) {
     g = ctx;
     g.translate(EXT, 0);
     const rnd = rng(20260101);
@@ -245,7 +303,7 @@ const Scene = (function () {
     R(8, 88, 6, 1, P.domeHi); R(6, 90, 2, 2, P.domeHi);
     g.restore();
 
-    drawArena(rnd);
+    if (variant === 'site') drawSite(rnd); else drawArena(rnd);
 
     // 광장 길(아레나 입구에서 아래로)
     for (let y = 103; y < GH; y++) {
@@ -297,17 +355,24 @@ const Scene = (function () {
     }
   }
 
-  function build() {
+  const cache = {};
+  function build(variant) {
     const sky = makeLayer(), clouds = makeLayer(), front = makeLayer();
     drawSky(sky.getContext('2d'));
     drawClouds(clouds.getContext('2d'));
-    drawFront(front.getContext('2d'));
-    layers = { sky, clouds, front };
+    drawFront(front.getContext('2d'), variant);
+    return (cache[variant || 'arena'] = { sky, clouds, front });
+  }
+
+  // 화면(w×h)을 덮는 배율과 위치. 컷신이 같은 좌표계로 그리도록 따로 내보낸다.
+  function geom(w, h) {
+    const sc = Math.max(w / LW, h / GH);
+    return { sc, ox: (w - LW * sc) / 2, oy: (h - GH * sc) / 2, EXT };
   }
 
   // t: 초 단위 시간. w,h: 그릴 영역 크기(화면을 꽉 채우도록 확대해서 덮는다).
-  function draw(ctx, t, w, h) {
-    if (!layers) build();
+  function draw(ctx, t, w, h, variant) {
+    const layers = cache[variant || 'arena'] || build(variant);
     w = w || GW * K; h = h || GH * K;
     ctx.imageSmoothingEnabled = false;
     // 높이에 맞춰 확대(기본 4배). 화면이 더 넓으면 양옆 풍경을 더 보여 준다.
@@ -328,5 +393,5 @@ const Scene = (function () {
     }
   }
 
-  return { draw };
+  return { draw, geom };
 })();

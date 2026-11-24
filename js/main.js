@@ -19,8 +19,6 @@
 
   let screen = 'title'; // title | intro | name | shop
   let modal = null;     // null | help | settings
-  let introIdx = 0;
-  let introT0 = 0;      // 현재 프롤로그 줄이 시작된 시각(타자 효과)
   let confirmWipe = false;
   let nameError = '';
   let now = 0;
@@ -113,7 +111,7 @@
       fitInput();
       setTimeout(() => input.focus(), 0);
     }
-    if (next === 'intro') { introIdx = 0; introT0 = now; }
+    if (next === 'intro') Cutscene.start(now, () => go('name')); // 프롤로그 컷신
   }
 
   function submitName() {
@@ -127,15 +125,6 @@
 
   function closeModal() { modal = null; confirmWipe = false; }
 
-  // 프롤로그: 글자가 나오는 중이면 한 번에 보여 주고, 다 나왔으면 다음 줄로
-  function advanceIntro() {
-    const full = DATA.INTRO[introIdx];
-    if ((now - introT0) * CFG.TYPE_SPEED < full.length) { introT0 = now - 999; return; }
-    introIdx++;
-    introT0 = now;
-    if (introIdx >= DATA.INTRO.length) go('name');
-  }
-
   // ---------- 입력 ----------
   function onPress(e) {
     if (e.target === input) return;
@@ -143,7 +132,7 @@
     const p = pointer(e);
     UI.setMouse({ x: p.x, y: p.y, on: !e.touches }); // 터치는 호버 없음
     if (UI.click(p)) return;
-    if (!modal && screen === 'intro') advanceIntro(); // 빈 곳을 눌러도 진행
+    if (!modal && screen === 'intro') Cutscene.advance(now); // 빈 곳을 눌러도 진행
   }
   cv.addEventListener('mousedown', onPress);
   cv.addEventListener('touchstart', onPress, { passive: false });
@@ -161,7 +150,7 @@
       else go('title');
     } else if ((e.key === 'Enter' || e.key === ' ') && !modal && screen === 'intro') {
       e.preventDefault();
-      advanceIntro();
+      Cutscene.advance(now);
     }
   });
 
@@ -182,12 +171,28 @@
     UI.button(L.backBtn, label || '돌아가기', { style: 'secondary', onClick: () => go('title') });
   }
 
+  // 타이틀 한 줄: 글자마다 크기·색이 다른 조각을 같은 밑줄(baseline)에 맞춰 가운데 정렬로 그린다.
+  function titleRow(parts, cx, baseline) {
+    let total = 0;
+    const widths = parts.map((p) => {
+      ctx.font = UI.font(p[1]);
+      const w = Math.ceil(ctx.measureText(p[0]).width);
+      total += w;
+      return w;
+    });
+    let x = cx - total / 2;
+    parts.forEach((p, i) => {
+      UI.text(p[0], x, baseline - p[1] * 0.35, p[1], p[2] === 'yellow' ? C.yellow : C.white, 'left', C.ink);
+      x += widths[i];
+    });
+  }
+
   function drawTitle() {
     Scene.draw(ctx, now, W, H);
     ctx.save();
     ctx.translate(OX, 0);
-    UI.text(DATA.TITLE_LINES[0], 480, 58, 40, C.white, 'center', C.ink);
-    UI.text(DATA.TITLE_LINES[1], 480, 112, 40, C.yellow, 'center', C.ink);
+    titleRow(DATA.TITLE_ROWS[0], 480, 78);
+    titleRow(DATA.TITLE_ROWS[1], 480, 150);
     UI.button(L.startBtn, State.hasSave() ? '이어하기' : '시작하기', {
       style: 'primary',
       onClick: () => { if (State.hasSave()) go('shop'); else go('intro'); },
@@ -198,18 +203,10 @@
   }
 
   function drawIntro() {
-    Scene.draw(ctx, now, W, H);
+    Cutscene.draw(ctx, now, W, H, OX);
+    if (screen !== 'intro') return; // 마지막 장면이 끝나 이름 입력으로 넘어간 경우
     ctx.save();
     ctx.translate(OX, 0);
-    const full = DATA.INTRO[introIdx];
-    const chars = Math.floor((now - introT0) * CFG.TYPE_SPEED);
-    let left = chars;
-    const lines = UI.wrap(full, L.dialog.w - 60, 26).map((s) => {
-      const part = s.slice(0, Math.max(0, left));
-      left -= s.length;
-      return part;
-    });
-    UI.dialog(L.dialog, '프롤로그', lines, chars >= full.length, now);
     UI.button(L.skipBtn, '건너뛰기', { style: 'secondary', size: 18, onClick: () => go('name') });
     ctx.restore();
   }
