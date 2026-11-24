@@ -2,7 +2,7 @@
 const State = {
   data: null,
   fresh() {
-    return { playerName: '', money: CFG.START_MONEY, rank: CFG.START_RANK, day: 1 };
+    return { playerName: '', shopName: '', money: CFG.START_MONEY, rank: CFG.START_RANK, day: 1 };
   },
   load() {
     try {
@@ -20,6 +20,6 @@ const State = {
     this.data = this.fresh();
   },
   hasSave() {
-    return !!this.data.playerName;
+    return !!this.data.playerName && !!this.data.shopName; // 이름과 가게 이름을 정해야 저장으로 친다
   },
 };

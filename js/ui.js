@@ -39,14 +39,14 @@ const UI = (function () {
 
   // ---------- 글자 ----------
   // outline을 주면 어두운 면·그림 위에서도 읽히는 테두리 글자. 밝은 면 위에서는 outline 없이 쓴다.
-  function text(str, x, y, size, color, align, outline) {
+  function text(str, x, y, size, color, align, outline, outlineW) {
     ctx.font = font(size);
     ctx.textAlign = align || 'center';
     ctx.textBaseline = 'middle';
     if (outline) {
       ctx.lineJoin = 'miter';
       ctx.miterLimit = 2;
-      ctx.lineWidth = Math.max(4, Math.round(size / 4) * 1.5);
+      ctx.lineWidth = outlineW || Math.min(10, Math.max(4, Math.round(size / 4) * 1.5)); // 글자가 커져도 테두리는 일정하게(상한 10)
       ctx.strokeStyle = outline;
       ctx.strokeText(str, x, y);
     }

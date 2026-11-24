@@ -8,6 +8,7 @@ const Cutscene = (function () {
   const TITLE_TIME = 3;  // 타이틀 카드 표시 시간(초)
   let st = null;
   let arcadeImg = null;
+  let phoneImg = null;
   let px = null; // 장면 위에 매 프레임 그리는 도트 층(인물·소품)
   let pg = null;
 
@@ -21,6 +22,21 @@ const Cutscene = (function () {
     };
   }
   const rect = (g, x, y, w, h, c) => { g.fillStyle = c; g.fillRect(Math.round(x), Math.round(y), Math.round(w), Math.round(h)); };
+
+  // ---------- 대사 속 이름 끼워 넣기 ----------
+  // {name} {shop}은 이름 그대로, {이:shop} {은:name} {을:shop}은 그 이름의 받침에 맞는 조사(이/가, 은/는, 을/를)만 붙인다.
+  const JOSA = { '이': ['이', '가'], '은': ['은', '는'], '을': ['을', '를'] };
+  function fmt(text) {
+    const d = State.data || {};
+    const get = (key) => (key === 'name' ? d.playerName : d.shopName) || '';
+    return String(text).replace(/\{(name|shop)\}|\{(이|은|을):(name|shop)\}/g, (m, key, jo, key2) => {
+      if (key) return get(key);
+      const word = get(key2);
+      const code = word.charCodeAt(word.length - 1) - 0xAC00;
+      const batchim = code >= 0 && code <= 11171 && code % 28 !== 0;
+      return JOSA[jo][batchim ? 0 : 1];
+    });
+  }
 
   // ---------- 도트 그림 ----------
   const PLUSH = ['#ff9fc2', '#ffd84a', '#ffffff', '#8fd3ff', '#c9a6ff', '#ffb27a'];
@@ -114,6 +130,57 @@ const Cutscene = (function () {
     });
   }
 
+  // 핸드폰 뉴스 장면의 배경(은은한 빛 + 줄무늬)
+  function buildPhoneBg() {
+    const img = document.createElement('canvas');
+    img.width = LW; img.height = GH;
+    const g = img.getContext('2d');
+    for (let y = 0; y < GH; y++) rect(g, 0, y, LW, 1, y < 70 ? '#d9e8f6' : '#c3daef');
+    for (let x = 0; x < LW; x += 12) rect(g, x, 0, 6, GH, 'rgba(255,255,255,0.18)');
+    for (let r = 58; r > 10; r -= 12) {
+      g.fillStyle = 'rgba(255,255,255,0.22)';
+      for (let y = -r; y <= r; y++) { const half = Math.round(r * Math.sqrt(1 - (y * y) / (r * r))); g.fillRect(LW / 2 - half, 54 + y, half * 2, 1); }
+    }
+    phoneImg = img;
+  }
+
+  const TINY = { N: ['#.#', '###', '###', '#.#', '#.#'], E: ['###', '#..', '##.', '#..', '###'], W: ['#...#', '#...#', '#.#.#', '##.##', '#...#'], S: ['.##', '#..', '.#.', '..#', '##.'] };
+  function tinyText(g, str, x, y, c) {
+    for (const ch of str) {
+      const rows = TINY[ch];
+      rows.forEach((row, j) => { for (let i = 0; i < row.length; i++) if (row[i] === '#') rect(g, x + i, y + j, 1, 1, c); });
+      x += rows[0].length + 1;
+    }
+  }
+
+  // 핸드폰 화면(속보 뉴스). t: 장면 시작 후 시간(초) - 처음에는 진동한다.
+  function drawPhone(g, t) {
+    const sh = t < 1.2 ? Math.round(Math.sin(t * 60)) : 0;
+    const x0 = 92 + sh, y0 = 4, w = 56, h = 100;
+    rect(g, x0 - 1, y0 - 1, w + 2, h + 2, '#14324d');
+    rect(g, x0, y0, w, h, '#2d4a66');
+    rect(g, x0 + 22, y0 + 1, 12, 1, '#14324d');
+    const sx = x0 + 3, sy = y0 + 4, sw = 50;
+    rect(g, sx, sy, sw, h - 8, '#ffffff');
+    rect(g, sx, sy, sw, 10, '#2f80d0');
+    tinyText(g, 'NEWS', sx + 4, sy + 2, '#ffffff');
+    rect(g, sx + sw - 8, sy + 3, 4, 4, Math.floor(t * 2) % 2 ? '#ffd84a' : '#ffffff');
+    rect(g, sx, sy + 11, sw, 7, Math.floor(t * 3) % 2 ? '#d9455f' : '#ef7a8f');
+    rect(g, sx + 3, sy + 13, 2, 3, '#ffffff'); rect(g, sx + 3, sy + 17, 2, 1, '#ffffff');
+    rect(g, sx + 8, sy + 14, 36, 1, '#ffffff'); rect(g, sx + 8, sy + 16, 24, 1, '#ffffff');
+    // 사진: 아레나 그림
+    rect(g, sx + 2, sy + 20, sw - 4, 26, '#cfe8f8');
+    rect(g, sx + 2, sy + 40, sw - 4, 6, '#8ad67e');
+    for (let yy = -4; yy <= 4; yy++) { const half = Math.round(15 * Math.sqrt(1 - (yy * yy) / 16)); rect(g, sx + 25 - half, sy + 27 + yy, half * 2, 1, '#78c47a'); }
+    rect(g, sx + 10, sy + 27, 30, 10, '#9fd6e8');
+    for (let xx = sx + 11; xx < sx + 40; xx += 3) rect(g, xx, sy + 28, 1, 9, '#6ab6d6');
+    for (let yy = -4; yy <= 4; yy++) { const half = Math.round(15 * Math.sqrt(1 - (yy * yy) / 16)); rect(g, sx + 25 - half, sy + 36 + yy, half * 2, 1, '#9fd6e8'); }
+    rect(g, sx + 20, sy + 31, 10, 5, '#ffe9a0');
+    // 제목·본문 줄
+    rect(g, sx + 2, sy + 50, sw - 4, 3, '#14324d'); rect(g, sx + 2, sy + 55, 30, 3, '#14324d');
+    for (let i = 0; i < 6; i++) rect(g, sx + 2, sy + 62 + i * 5, sw - 4 - (i % 3) * 8, 2, '#c9d9e6');
+  }
+
   // 구경꾼(몸 5px, 키 9~11px). 피부·머리색·옷색이 다양하다.
   const SKIN = ['#f0c9a0', '#d9a066', '#a8683a', '#ffdbb8', '#7a4a2a'];
   const HAIR = ['#2b1b10', '#f2d16b', '#a3522a', '#1c1c1c', '#d9d9d9', '#7a3b1e'];
@@ -183,16 +250,18 @@ const Cutscene = (function () {
   }
 
   // ---------- 진행 ----------
-  function start(now, done) {
-    st = { done, si: -1, i: 0, say: null, block: null, phase: 'in', pt: now, last: now, actors: [], emotes: [], crowd: [],
+  // hooks: { input(show, rect), value() } - 가게 이름을 적는 HTML 입력칸은 main.js가 맡는다.
+  function start(now, done, hooks) {
+    st = { done, hooks: hooks || {}, inputErr: '', pt0: now, si: -1, i: 0, say: null, block: null, phase: 'in', pt: now, last: now, actors: [], emotes: [], crowd: [],
       light: null, flash: 0, shake: 0, title: null, wait: 0, props: [], bg: 'arcade', t0: now };
     if (!arcadeImg) buildArcade();
+    if (!phoneImg) buildPhoneBg();
     nextScene(now);
   }
 
   function nextScene(now) {
     st.si++;
-    if (st.si >= DATA.STORY.length) { const d = st.done; st = null; if (d) d(); return; }
+    if (st.si >= DATA.STORY.length) { finish(); return; }
     const sc = DATA.STORY[st.si];
     st.bg = sc.bg; st.light = sc.light || null; st.props = sc.props || [];
     st.actors = sc.actors.map((a) => Object.assign({ mv: null }, a));
@@ -209,10 +278,15 @@ const Cutscene = (function () {
       const s = sc.steps[st.i];
       if (!s) { st.phase = 'out'; st.pt = now; return; }
       const op = s[0];
-      if (op === 'narr') { st.say = { tag: '', text: s[1], t0: now }; st.block = 'say'; return; }
-      if (op === 'say') { st.say = { tag: s[1], text: s[2], t0: now }; st.block = 'say'; return; }
+      if (op === 'narr') { st.say = { tag: '', text: fmt(s[1]), t0: now }; st.block = 'say'; return; }
+      if (op === 'say') { st.say = { tag: fmt(s[1]), text: fmt(s[2]), t0: now }; st.block = 'say'; return; }
+      if (op === 'ask') { // 대사 뒤에 가게 이름 입력칸이 뜬다
+        st.say = { tag: fmt(s[1]), text: fmt(s[2]), t0: now }; st.block = 'input'; st.inputErr = '';
+        if (st.hooks.input) st.hooks.input(true, INPUT_RECT);
+        return;
+      }
       if (op === 'wait') { st.wait = now + s[1]; st.block = 'wait'; return; }
-      if (op === 'title') { st.title = { main: s[1], sub: s[2] || '', t0: now }; st.block = 'title'; return; }
+      if (op === 'title') { st.title = { main: fmt(s[1]), sub: fmt(s[2] || ''), t0: now }; st.block = 'title'; return; }
       if (op === 'move') {
         const a = actor(s[1]);
         if (a) a.mv = { to: s[2], spd: s[3] || 30 };
@@ -222,6 +296,41 @@ const Cutscene = (function () {
       else if (op === 'shake') st.shake = s[1];
       st.i++;
     }
+  }
+
+  const INPUT_PANEL = { x: 200, y: 246, w: 560, h: 150 };
+  const INPUT_RECT = { x: 224, y: 314, w: 360, h: 56 };
+  const INPUT_OK = { x: 600, y: 314, w: 136, h: 56 };
+
+  // 가게 이름 확정(확정 버튼 / Enter)
+  function submit(now) {
+    if (!st || st.block !== 'input') return;
+    const name = (st.hooks.value ? st.hooks.value() : '').trim();
+    if (!name) { st.inputErr = '가게 이름을 적어 줘!'; return; }
+    State.data.shopName = name.slice(0, CFG.SHOP_NAME_MAX);
+    if (st.hooks.input) st.hooks.input(false);
+    endBlock(now);
+  }
+
+  // 건너뛰기: 가게 이름이 아직 없으면 이름 짓는 장면으로, 이미 정했다면 컷신을 끝낸다.
+  function skip(now) {
+    if (!st) return;
+    if (State.data.shopName) { finish(); return; }
+    for (let si = 0; si < DATA.STORY.length; si++) {
+      const i = DATA.STORY[si].steps.findIndex((x) => x[0] === 'ask');
+      if (i < 0) continue;
+      st.si = si - 1;
+      nextScene(now);
+      st.i = i;
+      return;
+    }
+    finish();
+  }
+
+  function finish() {
+    if (!st) return;
+    if (st.hooks.input) st.hooks.input(false);
+    const d = st.done; st = null; if (d) d();
   }
 
   function endBlock(now) { st.block = null; st.say = null; st.title = null; st.i++; runSteps(now); }
@@ -265,6 +374,7 @@ const Cutscene = (function () {
     if (st.shake > 0) ctx.translate(Math.round((Math.random() - 0.5) * st.shake * 2), Math.round((Math.random() - 0.5) * st.shake * 2));
     ctx.imageSmoothingEnabled = false;
     if (st.bg === 'arcade') ctx.drawImage(arcadeImg, sc.ox, sc.oy, LW * sc.sc, GH * sc.sc);
+    else if (st.bg === 'phone') ctx.drawImage(phoneImg, sc.ox, sc.oy, LW * sc.sc, GH * sc.sc);
     else Scene.draw(ctx, t, W, H, st.bg);
 
     // 인물·소품 층
@@ -273,6 +383,7 @@ const Cutscene = (function () {
     pg.save();
     pg.translate(EXT, 0);
     if (st.props.indexOf('shop') >= 0) drawShop(pg);
+    if (st.bg === 'phone') drawPhone(pg, now - st.pt);
     if (st.bg === 'arcade') {
       // 주인공이 하는 기계의 집게(위아래로 움직인다)
       const cx = HERO_X + 8 + Math.round((Math.sin(t * 0.9) * 0.5 + 0.5) * 14);
@@ -313,6 +424,18 @@ const Cutscene = (function () {
     }
     ctx.restore();
 
+    // 가게 이름 입력 패널(HTML 입력칸은 이 위에 겹쳐 놓인다)
+    if (st.block === 'input' && st.phase === 'run') {
+      ctx.save();
+      ctx.translate(OX, 0);
+      UI.panel(INPUT_PANEL, C.white);
+      UI.text('가게 이름을 지어 주세요', 480, INPUT_PANEL.y + 32, 22, C.ink);
+      UI.text('최대 ' + CFG.SHOP_NAME_MAX + '글자', 480, INPUT_PANEL.y + 58, 16, C.sub);
+      if (st.inputErr) UI.text(st.inputErr, 480, INPUT_PANEL.y + 138, 18, C.alert);
+      UI.button(INPUT_OK, '확정', { style: 'primary', onClick: () => submit(now) });
+      ctx.restore();
+    }
+
     // 타이틀 카드
     if (st.title) {
       const k = now - st.title.t0;
@@ -323,7 +446,7 @@ const Cutscene = (function () {
       ctx.globalAlpha = Math.max(0, a);
       ctx.translate(OX, 0);
       UI.text(st.title.sub, 480, 232, 22, '#cfe3f5');
-      UI.text(st.title.main, 480, 292, 52, C.white, 'center', C.ink);
+      UI.text(st.title.main, 480, 292, 52, C.white, 'center', C.ink, CFG.TITLE_OUTLINE);
       UI.rect(430, 334, 100, 4, C.yellow);
       ctx.restore();
     }
@@ -335,5 +458,5 @@ const Cutscene = (function () {
     if (fade > 0) { ctx.fillStyle = 'rgba(8,20,34,' + fade + ')'; ctx.fillRect(0, 0, W, H); }
   }
 
-  return { start, draw, advance, active: () => !!st };
+  return { start, draw, advance, submit, skip, active: () => !!st };
 })();

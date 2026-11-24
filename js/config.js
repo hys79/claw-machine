@@ -5,6 +5,8 @@ const CFG = {
   SAVE_KEY: 'claw-machine-tycoon-save',
   FONT: 'Game', // assets/fonts/game.woff2 (Galmuri)
   NAME_MAX: 8,
+  SHOP_NAME_MAX: 10, // 가게 이름 최대 글자 수
+  TITLE_OUTLINE: 10, // 타이틀·카드 글자 테두리 두께(글자 크기와 무관하게 일정)
   START_MONEY: 3000000, // 시작 자금(원)
   START_RANK: 1,
   // 흰색 톤 배경 + 푸른 계열 포인트. 분홍·보라 등 다른 색이 UI를 지배하지 않게 한다(docs/UI_GUIDE.md).

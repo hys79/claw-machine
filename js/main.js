@@ -40,12 +40,28 @@
     fitInput();
   }
 
+  // 입력칸 위치(가운데 960 영역 기준 논리 좌표). 이름 화면과 컷신의 가게 이름 입력이 같이 쓴다.
+  let inputRect = { x: 240, y: 236, w: 480, h: 64 };
   function fitInput() {
-    input.style.left = Math.round((OX + 240) * scale) + 'px';
-    input.style.top = Math.round(236 * scale) + 'px';
-    input.style.width = Math.round(480 * scale) + 'px';
-    input.style.height = Math.round(64 * scale) + 'px';
-    input.style.fontSize = Math.round(32 * scale) + 'px';
+    input.style.left = Math.round((OX + inputRect.x) * scale) + 'px';
+    input.style.top = Math.round(inputRect.y * scale) + 'px';
+    input.style.width = Math.round(inputRect.w * scale) + 'px';
+    input.style.height = Math.round(inputRect.h * scale) + 'px';
+    input.style.fontSize = Math.round(inputRect.h * 0.5 * scale) + 'px';
+  }
+  function showInput(show, rect, max, placeholder) {
+    if (show) {
+      inputRect = rect;
+      input.maxLength = max;
+      input.placeholder = placeholder;
+      input.value = '';
+      input.style.display = 'block';
+      fitInput();
+      setTimeout(() => input.focus(), 0);
+    } else {
+      input.style.display = 'none';
+      input.blur();
+    }
   }
 
   // ---------- 작은 도구 ----------
@@ -105,23 +121,24 @@
     modal = null;
     confirmWipe = false;
     nameError = '';
-    input.style.display = next === 'name' ? 'block' : 'none';
-    if (next === 'name') {
-      input.value = '';
-      fitInput();
-      setTimeout(() => input.focus(), 0);
-    }
-    if (next === 'intro') Cutscene.start(now, () => go('name')); // 프롤로그 컷신
+    showInput(next === 'name', { x: 240, y: 236, w: 480, h: 64 }, CFG.NAME_MAX, '이름 입력');
+    if (next === 'intro') Cutscene.start(now, () => { State.save(); go('shop'); }, cutHooks); // 프롤로그 컷신
   }
 
+  // 첫 시작: 주인공 이름을 정하고 컷신으로. 저장은 가게 이름까지 정한 뒤에 한다.
   function submitName() {
     const name = input.value.trim();
     if (!name) { nameError = '이름을 적어 줘!'; return; }
     State.data = State.fresh();
     State.data.playerName = name.slice(0, CFG.NAME_MAX);
-    State.save();
-    go('shop');
+    go('intro');
   }
+
+  // 컷신이 가게 이름 입력칸을 띄우고 읽어 갈 때 쓰는 연결
+  const cutHooks = {
+    input: (show, rect) => showInput(show, rect, CFG.SHOP_NAME_MAX, '가게 이름'),
+    value: () => input.value,
+  };
 
   function closeModal() { modal = null; confirmWipe = false; }
 
@@ -139,7 +156,10 @@
   cv.addEventListener('mousemove', (e) => { const p = pointer(e); UI.setMouse({ x: p.x, y: p.y, on: true }); });
   cv.addEventListener('mouseleave', () => UI.setMouse({ x: -1, y: -1, on: false }));
   input.addEventListener('input', () => { nameError = ''; });
-  input.addEventListener('keydown', (e) => { if (e.key === 'Enter') submitName(); });
+  input.addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter') return;
+    if (screen === 'name') submitName(); else if (screen === 'intro') Cutscene.submit(now);
+  });
   window.addEventListener('resize', resize);
 
   // Esc: 팝업 닫기 → 이전 화면 → (타이틀에서는) 설정 열기
@@ -148,7 +168,7 @@
       if (modal) closeModal();
       else if (screen === 'title') modal = 'settings';
       else go('title');
-    } else if ((e.key === 'Enter' || e.key === ' ') && !modal && screen === 'intro') {
+    } else if ((e.key === 'Enter' || e.key === ' ') && e.target !== input && !modal && screen === 'intro') {
       e.preventDefault();
       Cutscene.advance(now);
     }
@@ -182,7 +202,7 @@
     });
     let x = cx - total / 2;
     parts.forEach((p, i) => {
-      UI.text(p[0], x, baseline - p[1] * 0.35, p[1], p[2] === 'yellow' ? C.yellow : C.white, 'left', C.ink);
+      UI.text(p[0], x, baseline - p[1] * 0.35, p[1], p[2] === 'yellow' ? C.yellow : C.white, 'left', C.ink, CFG.TITLE_OUTLINE);
       x += widths[i];
     });
   }
@@ -195,7 +215,7 @@
     titleRow(DATA.TITLE_ROWS[1], 480, 150);
     UI.button(L.startBtn, State.hasSave() ? '이어하기' : '시작하기', {
       style: 'primary',
-      onClick: () => { if (State.hasSave()) go('shop'); else go('intro'); },
+      onClick: () => { if (State.hasSave()) go('shop'); else go('name'); },
     });
     UI.button(L.helpBtn, '게임 설명', { style: 'secondary', onClick: () => { modal = 'help'; } });
     ctx.restore();
@@ -207,16 +227,14 @@
     if (screen !== 'intro') return; // 마지막 장면이 끝나 이름 입력으로 넘어간 경우
     ctx.save();
     ctx.translate(OX, 0);
-    UI.button(L.skipBtn, '건너뛰기', { style: 'secondary', size: 18, onClick: () => go('name') });
+    UI.button(L.skipBtn, '건너뛰기', { style: 'secondary', size: 18, onClick: () => Cutscene.skip(now) });
     ctx.restore();
   }
 
   function drawName() {
     const np = L.namePanel;
     UI.panel(np, C.white);
-    UI.title('가게 신청서', 480, np.y + 42);
-    UI.text(DATA.NAME_PROMPT, 480, 186, 26, C.ink);
-    UI.text('이름은 최대 ' + CFG.NAME_MAX + '글자예요', 480, 214, 18, C.sub);
+    UI.title(DATA.NAME_PROMPT, 480, np.y + 42, '이름은 최대 ' + CFG.NAME_MAX + '글자예요');
     if (nameError) UI.text(nameError, 480, 332, 22, C.alert);
     UI.button({ x: 360, y: 372, w: 240, h: 56 }, '확인', { style: 'primary', onClick: submitName });
     backButton('돌아가기');
@@ -225,7 +243,7 @@
   function drawShop() {
     const d = State.data;
     UI.moneyPill(L.moneyPill, won(d.money));
-    UI.title(d.playerName + ' 사장님의 인형뽑기 가게', 480, 92);
+    UI.title(d.shopName, 480, 92, d.playerName + ' 사장님의 인형뽑기 가게');
     const card = { x: 240, y: 156, w: 480, h: 232 };
     UI.panel(card, C.white);
     const rows = [['가게 랭크', DATA.RANK_NAMES[d.rank - 1] || ''], ['소지금', won(d.money)], ['영업 일차', d.day + '일차']];
