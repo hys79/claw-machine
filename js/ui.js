@@ -109,7 +109,7 @@ const UI = (function () {
     danger: { fill: C.alert, hi: C.alertHi, text: C.white, border: C.ink, top: C.alertLight, shade: C.alertDark },
   };
 
-  // b: 안쪽 영역. o: {style, size, onClick, modal, disabled, draw(x,y,w,h)}
+  // b: 안쪽 영역. o: {style, size, onClick, modal, disabled, bare(상자 없이 draw만), draw(x,y,w,h,hover)}
   function button(b, label, o) {
     o = o || {};
     const st = STYLE[o.disabled ? 'soft' : (o.style || 'primary')];
@@ -121,6 +121,8 @@ const UI = (function () {
     const hover = live && !o.disabled && mouse.on &&
       mouse.x >= abs.x && mouse.x <= abs.x + abs.w && mouse.y >= abs.y && mouse.y <= abs.y + abs.h;
     const y = b.y - (hover ? 1 : 0);
+
+    if (o.bare) { o.draw(b.x, y, b.w, b.h, hover); return; } // 상자 없이 아이콘만
 
     rect(b.x - bw + 2, y - bw + 3, b.w + bw * 2, b.h + bw * 2, C.shadow);          // 그림자
     framed({ x: b.x, y, w: b.w, h: b.h }, hover ? st.hi : st.fill, bw, st.border);  // 테두리 + 면

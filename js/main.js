@@ -52,23 +52,37 @@
 
   // ---------- 작은 도구 ----------
   // 도트 스프라이트를 작은 이미지로 한 번 만들어 두고 확대해서 그린다(칸마다 칠하면 틈이 생긴다).
+  // outline을 주면 그 색의 테두리(t 픽셀)를 둘러 그림 위에서도 또렷하게 보이게 한다.
   const spriteCache = new Map();
-  function sprite(rows, x, y, s) {
-    let img = spriteCache.get(rows);
-    if (!img) {
-      img = document.createElement('canvas');
+  function spriteImg(rows, tint) {
+    const key = rows;
+    let m = spriteCache.get(key);
+    if (!m) { m = {}; spriteCache.set(key, m); }
+    const k = tint || 'color';
+    if (!m[k]) {
+      const img = document.createElement('canvas');
       img.width = rows[0].length;
       img.height = rows.length;
       const g = img.getContext('2d');
       rows.forEach((row, j) => {
         for (let i = 0; i < row.length; i++) {
-          const c = DATA.PALETTE[row[i]];
+          const c = tint ? (row[i] === '.' ? null : tint) : DATA.PALETTE[row[i]];
           if (!c) continue;
           g.fillStyle = c;
           g.fillRect(i, j, 1, 1);
         }
       });
-      spriteCache.set(rows, img);
+      m[k] = img;
+    }
+    return m[k];
+  }
+  function sprite(rows, x, y, s, outline, t) {
+    const img = spriteImg(rows);
+    if (outline) {
+      const sil = spriteImg(rows, outline);
+      t = t || 2;
+      [[-t, 0], [t, 0], [0, -t], [0, t], [-t, -t], [t, -t], [-t, t], [t, t]].forEach((d) =>
+        ctx.drawImage(sil, x + d[0], y + d[1], sil.width * s, sil.height * s));
     }
     ctx.drawImage(img, x, y, img.width * s, img.height * s);
   }
@@ -152,13 +166,14 @@
   });
 
   // ---------- 화면별 그리기 ----------
+  // 설정 아이콘: 상자 없이 톱니만(흰색 + 진한 테두리). 마우스를 올리면 1px 뜬다.
   function drawGearButton() {
     UI.button(settingsRect(), '', {
-      style: 'primary',
+      bare: true,
       onClick: () => { modal = 'settings'; },
       draw(x, y, w, h) {
-        const gs = 3, gw = DATA.GEAR[0].length * gs;
-        sprite(DATA.GEAR, x + (w - gw) / 2, y + (h - gw) / 2 - 1, gs);
+        const gs = 4, gw = DATA.GEAR[0].length * gs;
+        sprite(DATA.GEAR, x + (w - gw) / 2, y + (h - gw) / 2, gs, C.ink, 3);
       },
     });
   }
