@@ -272,29 +272,6 @@ const Cutscene = (function () {
     g.restore();
   }
 
-  // 글자를 깨끗한 도트로: 도트 폰트(이 폰트는 14px 기준)를 14px로 그린 뒤 번진 가장자리를 잘라 낸다.
-  const pixTextCache = new Map();
-  function pixelText(str, color) {
-    const key = str + '|' + color;
-    if (pixTextCache.has(key)) return pixTextCache.get(key);
-    const c = document.createElement('canvas');
-    const g = c.getContext('2d');
-    g.font = '14px ' + CFG.FONT + ', sans-serif';
-    c.width = Math.ceil(g.measureText(str).width) + 2; c.height = 18;
-    g.font = '14px ' + CFG.FONT + ', sans-serif';
-    g.textBaseline = 'alphabetic'; g.fillStyle = '#000';
-    g.fillText(str, 1, 14);
-    const data = g.getImageData(0, 0, c.width, c.height);
-    const rgb = [1, 3, 5].map((i) => parseInt(color.slice(i, i + 2), 16));
-    for (let i = 0; i < data.data.length; i += 4) {
-      const on = data.data[i + 3] > 110;
-      data.data[i] = rgb[0]; data.data[i + 1] = rgb[1]; data.data[i + 2] = rgb[2]; data.data[i + 3] = on ? 255 : 0;
-    }
-    g.putImageData(data, 0, 0);
-    pixTextCache.set(key, c);
-    return c;
-  }
-
   function drawRows(g, rows, pal, x, y) {
     rows.forEach((row, j) => {
       for (let i = 0; i < row.length; i++) {
@@ -486,11 +463,9 @@ const Cutscene = (function () {
     rect(g, x0 - 2, top, w + 4, 5, '#2f80d0'); rect(g, x0 - 2, top, w + 4, 1, '#6ab0f0');
     rect(g, x0, top + 5, w, GROUND - top - 5, '#f7fbfe'); rect(g, x0 + w - 4, top + 5, 4, GROUND - top - 5, '#e1ebf3');
     // 간판: 이름을 짓기 전에는 빈 간판
-    const txt = name ? pixelText(name, '#ffffff') : null;
-    const sw = Math.min(w - 8, Math.max(48, (txt ? txt.width : 0) + 16)), sx = Math.round(x0 + w / 2 - sw / 2);
+    const sw = w - 8, sx = Math.round(x0 + w / 2 - sw / 2); // 간판 크기는 고정(이름 글자는 화면에서 크기를 맞춰 그린다)
     rect(g, sx - 1, top + 6, sw + 2, 20, '#14324d'); rect(g, sx, top + 7, sw, 18, '#2f80d0'); rect(g, sx, top + 7, sw, 2, '#6ab0f0');
-    if (txt) {
-      g.drawImage(txt, Math.round(x0 + w / 2 - txt.width / 2), top + 7);
+    if (name) {
       for (let i = 0; i < 2; i++) { const sxp = i ? sx + sw + 4 : sx - 7; if (Math.floor(t * 2) % 2) { rect(g, sxp, top + 15, 3, 1, '#ffd84a'); rect(g, sxp + 1, top + 14, 1, 3, '#ffd84a'); } }
     }
     // 차양
@@ -717,6 +692,9 @@ const Cutscene = (function () {
     });
     pg.restore();
     ctx.drawImage(px, sc.ox, sc.oy, LW * sc.sc, GH * sc.sc);
+    if (st.bg === 'street' && State.data.shopName) { // 간판의 가게 이름: 화면 해상도의 또렷한 글자(긴 이름은 알아서 작아진다)
+      UI.fitText(State.data.shopName, sc.ox + (EXT + 120) * sc.sc, sc.oy + 42 * sc.sc, 104 * sc.sc, 16 * sc.sc, '#ffffff');
+    }
 
     if (st.light === 'dusk') { ctx.fillStyle = 'rgba(255,140,60,0.28)'; ctx.fillRect(0, 0, W, H); }
     ctx.restore();

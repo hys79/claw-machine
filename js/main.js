@@ -47,7 +47,7 @@
     input.style.top = Math.round(inputRect.y * scale) + 'px';
     input.style.width = Math.round(inputRect.w * scale) + 'px';
     input.style.height = Math.round(inputRect.h * scale) + 'px';
-    input.style.fontSize = Math.round(inputRect.h * 0.5 * scale) + 'px';
+    input.style.fontSize = Math.max(14, Math.round(inputRect.h * 0.5 * scale / 14) * 14) + 'px'; // 도트 폰트는 14의 배수일 때 또렷하다
   }
   function showInput(show, rect, max, placeholder) {
     if (show) {

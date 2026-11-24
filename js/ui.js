@@ -10,7 +10,13 @@ const UI = (function () {
   let modalOpen = false;
   const mouse = { x: -1, y: -1, on: false };
 
-  function font(size) { return size + 'px ' + CFG.FONT + ', sans-serif'; }
+  // 이 도트 폰트는 14px이 기준이라, 화면에 찍히는 글자 크기(기기 픽셀)를 14의 배수로 맞춰야 획이 또렷하다.
+  // 요청한 크기에 가장 가까운 14의 배수로 바꾸고(논리 크기로 되돌려 돌려준다), 글자 시작 위치도 기기 픽셀에 맞춘다.
+  function snapSize(size) {
+    const k = ctx.getTransform().a;
+    return Math.max(1, Math.round(size * k / 14)) * 14 / k;
+  }
+  function font(size) { return snapSize(size) + 'px ' + CFG.FONT + ', sans-serif'; }
 
   function begin(c, cv, modal) {
     ctx = c; canvas = cv; next = []; modalOpen = !!modal;
@@ -50,17 +56,34 @@ const UI = (function () {
   // outline을 주면 어두운 면·그림 위에서도 읽히는 테두리 글자. 밝은 면 위에서는 outline 없이 쓴다.
   function text(str, x, y, size, color, align, outline, outlineW) {
     ctx.font = font(size);
-    ctx.textAlign = align || 'center';
-    ctx.textBaseline = 'middle';
+    ctx.textBaseline = 'alphabetic';
+    ctx.textAlign = 'left';
+    const tf = ctx.getTransform();
+    const w = ctx.measureText(str).width;
+    const m = ctx.measureText('가');                                   // 글자의 세로 가운데를 구한다
+    const mid = ((m.actualBoundingBoxAscent || 0) - (m.actualBoundingBoxDescent || 0)) / 2;
+    align = align || 'center';
+    const lx = align === 'left' ? x : (align === 'right' ? x - w : x - w / 2);
+    const sx = (Math.round(lx * tf.a + tf.e) - tf.e) / tf.a;           // 기기 픽셀에 맞춘 시작 위치
+    const sy = (Math.round((y + mid) * tf.d + tf.f) - tf.f) / tf.d;
     if (outline) {
       ctx.lineJoin = 'miter';
       ctx.miterLimit = 2;
       ctx.lineWidth = outlineW || Math.min(10, Math.max(4, Math.round(size / 4) * 1.5)); // 글자가 커져도 테두리는 일정하게(상한 10)
       ctx.strokeStyle = outline;
-      ctx.strokeText(str, x, y);
+      ctx.strokeText(str, sx, sy);
     }
     ctx.fillStyle = color;
-    ctx.fillText(str, x, y);
+    ctx.fillText(str, sx, sy);
+  }
+
+  // 정해진 상자(maxW×maxH 논리 크기)에 들어가는 가장 큰 또렷한 글자로 가운데에 그린다(긴 가게 이름 간판용).
+  function fitText(str, cx, cy, maxW, maxH, color) {
+    const k = ctx.getTransform().a;
+    ctx.font = (14 / k) + 'px ' + CFG.FONT + ', sans-serif';
+    const w14 = Math.max(1, ctx.measureText(str).width * k);            // 14px 기준 기기 픽셀 폭
+    const n = Math.max(1, Math.floor(Math.min(maxW * k / w14, maxH * k / 14)));
+    text(str, cx, cy, n * 14 / k, color, 'center');
   }
 
   // 폭에 맞춰 줄바꿈(띄어쓰기 우선, 단어가 길면 글자 단위)
@@ -211,7 +234,8 @@ const UI = (function () {
   function dialog(b, tag, lines, ready, t) {
     panel(b, C.white, BW.dialog);
     if (tag) {
-      const tw = tag.length * 18 + 28;
+      ctx.font = font(18);
+      const tw = Math.ceil(ctx.measureText(tag).width) + 28;
       framed({ x: b.x + 20, y: b.y - 20, w: tw, h: 32 }, C.blue, BW.button);
       text(tag, b.x + 20 + tw / 2, b.y - 4, 18, C.white);
     }
@@ -219,5 +243,5 @@ const UI = (function () {
     if (ready && Math.floor(t * 2) % 2 === 0) text('▼', b.x + b.w - 30, b.y + b.h - 28, 22, C.blue, 'right');
   }
 
-  return { begin, end, setMouse, click, move, release, text, wrap, rect, framed, panel, chip, scrim, hline, button, slider, title, sprite, coin, moneyPill, dialog, font };
+  return { begin, end, setMouse, click, move, release, text, wrap, rect, framed, panel, chip, scrim, hline, button, slider, title, sprite, coin, moneyPill, dialog, font, fitText };
 })();
