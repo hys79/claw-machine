@@ -112,14 +112,79 @@ const Cutscene = (function () {
     arcadeImg = img;
   }
 
-  // 주인공(12x20, 파란 후드티). 정면 도트.
-  const ME = [
-    '...hhhhhh...', '..hhhhhhhh..', '..hhssssss..', '..hsskssks..', '..hssssssh..', '...ssmmss...',
-    '....ssss....', '..bbbbbbbb..', '.bbbbbbbbbb.', '.sbbbbbbbbs.', '.sbbwwwwbbs.', '.sbbbbbbbbs.',
-    '..bbbbbbbb..', '..pppppppp..', '..pppp.ppp..', '..ppp..ppp..', '..ppp..ppp..', '..ppp..ppp..',
-    '..ddd..ddd..', '.dddd..dddd.',
+  // 주인공(14x21 + 자동 테두리). 머리가 큰 캐주얼 파란 후드티 캐릭터. 정면 / 뒷모습(기계를 할 때).
+  const ME_FRONT = [
+    '....hhhhhh....',
+    '..hhhhhhhhhh..',
+    '.hhhHHhhhhhhh.',
+    '.hhhhhhhhhhhh.',
+    '.hssssssssssh.',
+    '.hsKwssssKwsh.',
+    '.hsKKssssKKsh.',
+    '.hccssmmsscch.',
+    '..hssssssssh..',
+    '...ssssssss...',
+    '..bbbbbbbbbb..',
+    '.bbbbbyybbbbb.',
+    '.bbbbbyybbbbb.',
+    '.bbbBBBBBBbbb.',
+    '.ssbbbbbbbbss.',
+    '...bbbbbbbb...',
+    '...BBBBBBBB...',
+    '...ppp..ppp...',
+    '...ppp..ppp...',
+    '..dddd..dddd..',
+    '..dddd..dddd..',
   ];
-  const ME_PAL = { h: '#3b2a20', s: '#f0c9a0', k: '#14324d', m: '#c46a5a', b: '#2f80d0', w: '#ffffff', p: '#2d4a66', d: '#14324d' };
+  const ME_BACK = [
+    '....hhhhhh....',
+    '..hhhhhhhhhh..',
+    '.hhhHHhhhhhhh.',
+    '.hhhhhhhhhhhh.',
+    '.hhhhhhhhhhhh.',
+    '.shhhhhhhhhhs.',
+    '.shhhhhhhhhhs.',
+    '.hhhhhhhhhhhh.',
+    '..hhhhhhhhhh..',
+    '...hhhhhhhh...',
+    '..bbbbbbbbbb..',
+    '.bbbBBBBBBbbb.',
+    'bbbbbbBBbbbbbb',
+    '.bbbbbyybbbbb.',
+    '...bbbyybbb...',
+    '...bbbbbbbb...',
+    '...BBBBBBBB...',
+    '...ppp..ppp...',
+    '...ppp..ppp...',
+    '..dddd..dddd..',
+    '..dddd..dddd..',
+  ];
+  // 눈 깜빡임(정면): 눈 두 줄을 한 줄 선으로
+  const ME_BLINK = ME_FRONT.map((r, i) => (i === 5 ? '.hssssssssssh.' : r));
+  const ME_PAL = { h: '#4a3426', H: '#7a5640', s: '#ffd9b5', c: '#ff9fa0', m: '#c0584a', K: '#14324d', w: '#ffffff',
+    b: '#3f8fe0', B: '#2c6cb8', y: '#ffd84a', p: '#3b5878', d: '#14324d' };
+
+  // 도트를 한 번만 이미지로 만들고, 바깥에 ink 테두리 1칸을 자동으로 두른다(스티커 같은 모양).
+  const spriteImgs = new Map();
+  function outlinedImg(rows) {
+    let img = spriteImgs.get(rows);
+    if (img) return img;
+    const w = rows[0].length, h = rows.length;
+    img = document.createElement('canvas');
+    img.width = w + 2; img.height = h + 2;
+    const g = img.getContext('2d');
+    const on = (x, y) => x >= 0 && y >= 0 && x < w && y < h && rows[y][x] !== '.';
+    for (let y = -1; y <= h; y++) for (let x = -1; x <= w; x++) {
+      if (on(x, y)) continue;
+      if (on(x - 1, y) || on(x + 1, y) || on(x, y - 1) || on(x, y + 1)) rect(g, x + 1, y + 1, 1, 1, '#14324d');
+    }
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+      const c = ME_PAL[rows[y][x]];
+      if (c) rect(g, x + 1, y + 1, 1, 1, c);
+    }
+    spriteImgs.set(rows, img);
+    return img;
+  }
 
   function drawRows(g, rows, pal, x, y) {
     rows.forEach((row, j) => {
@@ -291,7 +356,8 @@ const Cutscene = (function () {
         const a = actor(s[1]);
         if (a) a.mv = { to: s[2], spd: s[3] || 30 };
         if (s[4] === true) { st.block = 'move'; return; }
-      } else if (op === 'emote') st.emotes.push({ id: s[1], ch: s[2], t0: now });
+      } else if (op === 'pose') { const a = actor(s[1]); if (a) a.pose = s[2]; }
+      else if (op === 'emote') st.emotes.push({ id: s[1], ch: s[2], t0: now });
       else if (op === 'flash') st.flash = 1;
       else if (op === 'shake') st.shake = s[1];
       st.i++;
@@ -395,7 +461,11 @@ const Cutscene = (function () {
     const list = st.crowd.map((p) => ({ y: p.y, f: () => drawPerson(pg, p, t) }))
       .concat(st.actors.map((a) => ({ y: a.y, f: () => {
         const hop = a.mv ? (Math.floor(t * 8) % 2) : 0;
-        drawRows(pg, ME, ME_PAL, Math.round(a.x - 6), a.y - 20 - hop);
+        const blink = (t + a.x * 0.1) % 3.2 > 3.05;
+        const rows = a.pose === 'back' ? ME_BACK : (blink ? ME_BLINK : ME_FRONT);
+        const img = outlinedImg(rows);
+        rect(pg, Math.round(a.x) - 7, a.y - 1, 14, 2, 'rgba(20,50,77,0.22)'); // 발밑 그림자
+        pg.drawImage(img, Math.round(a.x - img.width / 2), a.y - img.height + 1 - hop);
       } })));
     list.sort((a, b) => a.y - b.y).forEach((o) => o.f());
     st.emotes = st.emotes.filter((e) => now - e.t0 < 1.6);

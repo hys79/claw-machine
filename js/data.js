@@ -10,15 +10,15 @@ const DATA = {
   // 프롤로그 컷신 대본(대사 위주). {name}=플레이어 이름, {shop}=가게 이름, {이:shop}처럼 쓰면 그 이름의 받침에 맞는 조사(이/가, 은/는, 을/를)만 붙는다.
   // bg: arcade(오락실 안) | phone(핸드폰 뉴스) | site(공사 중인 아레나) | arena(완공된 아레나), light: 화면 색 입힘, props: 소품, crowd: 사람 수
   // actors: 등장 인물(x, y는 발 위치, 도트 좌표 0~240). 단계: say(태그, 글), wait(초), move(id, x, 속도, true=끝날 때까지 대기),
-  //         emote(id, !/bulb), shake(세기), ask(태그, 글) = 대사 뒤에 가게 이름 입력, title(큰 글, 작은 글)
+  //         emote(id, !/bulb), pose(id, front/back), shake(세기), ask(태그, 글) = 대사 뒤에 가게 이름 입력, title(큰 글, 작은 글)
   STORY: [
-    { bg: 'arcade', actors: [{ id: 'me', x: 133, y: 106 }], steps: [
+    { bg: 'arcade', actors: [{ id: 'me', x: 133, y: 106, pose: 'back' }], steps: [
       ['wait', 0.5],
       ['say', '{name}', '좋았어… 조금만 더. 오른쪽, 오른쪽!'],
       ['shake', 3], ['emote', 'me', '!'], ['wait', 0.9],
       ['say', '{name}', '잡았다! 역시 나라니까~'],
       ['say', '{name}', '이 정도면 인형뽑기 고수라고 불러도 되겠지?'],
-      ['shake', 2], ['emote', 'me', '!'], ['wait', 0.7],
+      ['shake', 2], ['pose', 'me', 'front'], ['emote', 'me', '!'], ['wait', 0.7],
       ['say', '{name}', '응? 핸드폰 알림이네. 무슨 뉴스지?'],
     ] },
     { bg: 'phone', actors: [], steps: [
