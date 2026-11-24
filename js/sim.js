@@ -28,6 +28,13 @@ const Sim = (function () {
     return r;
   }
   const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+  // 오차함수(표준정규의 구간 확률 계산용)
+  function erf(x) {
+    const s = x < 0 ? -1 : 1; x = Math.abs(x);
+    const t = 1 / (1 + 0.3275911 * x);
+    const y = 1 - (((((1.061405429 * t - 1.453152027) * t) + 1.421413741) * t - 0.284496736) * t + 0.254829592) * t * Math.exp(-x * x);
+    return s * y;
+  }
   const round10 = (v) => Math.round(v / 10) * 10;
 
   // ---------- 조회 ----------
@@ -50,7 +57,7 @@ const Sim = (function () {
     const st = {
       v: 1, seed: seed == null ? (Date.now() & 0x7fffffff) : seed, playerName: playerName || '', shopName: shopName || '',
       day: 1, money: CFG.START_MONEY, rank: 1, shopLevel: 0, warehouseLevel: 0, reputation: Z.START_REP, popularity: 0,
-      totalRevenue: 0, machines: [], stock: {}, incoming: [], trend: { tags: [], until: 0 }, history: [], nextId: 1,
+      totalRevenue: 0, avgRev: null, machines: [], stock: {}, incoming: [], trend: { tags: [], until: 0 }, history: [], nextId: 1,
       weather: 'sunny', env: null, bankrupt: false,
     };
     addMachine(st, 'standard', true);
@@ -78,6 +85,7 @@ const Sim = (function () {
   function buyMachine(st, type) {
     const def = DATA.MACHINES[type];
     if (!def) return { ok: false, why: '없는 기계' };
+    if (def.rank > st.rank) return { ok: false, why: '아직 구입할 수 없어요 (랭크가 더 필요해요)' };
     if (st.money < def.price) return { ok: false, why: '돈이 부족해요' };
     if (footUsed(st) + def.footprint > shopLv(st).slots) return { ok: false, why: '점포에 자리가 없어요' };
     st.money -= def.price;
@@ -174,9 +182,13 @@ const Sim = (function () {
   }
   function grabProb(st, m, d, ct, env) {
     const def = mdef(m);
+    if (def.kind === 'timer') { // 정확한 시간에 버튼 누르기: 손님의 버튼 오차 ~ 정규분포(숙련자일수록 작다), 허용 오차 안이면 성공
+      const tol = def.tolerance[m.strength - 1], sigma = def.sigma / ct.skill;
+      return erf(tol / (sigma * Math.SQRT2));
+    }
     const base = def.grab[d.size];
     if (!base) return 0;
-    return clamp(base * Z.STRENGTH[m.strength - 1] * (1 - d.hard * 0.4) * ct.skill * (env.rain ? 1 : 1), 0, 0.6);
+    return clamp(base * Z.STRENGTH[m.strength - 1] * (1 - d.hard * 0.4) * ct.skill, 0, 0.6);
   }
 
   // ---------- 하루의 시작 ----------
@@ -207,7 +219,13 @@ const Sim = (function () {
   }
   function repMult(st) { return Z.REP_MULT[0] + (Z.REP_MULT[1] - Z.REP_MULT[0]) * (st.reputation / 100); }
   function expectedVisitors(st, env) {
-    return Z.BASE_VISITORS * Z.DOW[env.dow] * env.weatherMult * repMult(st) * shopLv(st).foot * (0.5 + 0.5 * machineVariety(st));
+    return Z.BASE_VISITORS * Z.DOW[env.dow] * env.weatherMult * repMult(st) * shopLv(st).foot * (0.5 + 0.5 * machineVariety(st)) * eyeCatch(st);
+  }
+  // 초대형 인형을 채운 기계가 있으면 지나가던 사람이 들어온다(기계당 +8%, 최대 +16%)
+  function eyeCatch(st) {
+    let n = 0;
+    st.machines.forEach((m) => { Object.keys(m.load).forEach((id) => { if (m.load[id].qty > 0 && doll(id).size === 'XL') n++; }); });
+    return 1 + Math.min(n, 2) * 0.08;
   }
   // 기계/인형이 다양할수록(최대 1) 손님이 많이 들어온다
   function machineVariety(st) {
@@ -418,7 +436,8 @@ const Sim = (function () {
     st.popularity = st.popularity * 0.97 + dayScore;
     R.popularity = st.popularity;
     // 랭크
-    while (st.rank < Z.RANK_POP.length && st.popularity >= Z.RANK_POP[st.rank]) { st.rank++; R.rankUp = st.rank; }
+    st.avgRev = st.avgRev == null ? R.revenue : st.avgRev * 0.9 + R.revenue * 0.1; // 최근 평균 일매출
+    while (st.rank < Z.RANK_POP.length && st.popularity >= Z.RANK_POP[st.rank] && st.avgRev >= Z.RANK_REV[st.rank]) { st.rank++; R.rankUp = st.rank; }
     if (st.money < 0) st.bankrupt = true;
     st.history.push({ day: R.day, revenue: R.revenue, profit: R.profit, visitors: R.visitors, rep: Math.round(st.reputation), money: st.money });
     if (st.history.length > 365) st.history.shift();
@@ -477,7 +496,7 @@ const Sim = (function () {
       const inMachines = st.machines.reduce((n, m) => n + (m.load[id] ? m.load[id].qty : 0), 0);
       const inStock = st.stock[id] ? st.stock[id].qty : 0;
       const inc = st.incoming.filter((x) => x.id === id).reduce((n, x) => n + x.qty, 0);
-      const want = Math.ceil(need[id] * 1.5) - inMachines - inStock - inc;
+      const want = Math.ceil(need[id] * 2) - inMachines - inStock - inc;
       if (want > 0) items.push({ id, qty: want });
     });
     // 예산: 여유 자금(reserve) 안에서만, 창고 용량 안에서만
@@ -495,7 +514,41 @@ const Sim = (function () {
     return { ordered: buy };
   }
 
+  // ---------- 랭크 / 전국 순위 ----------
+  // 내부 단계(st.rank): 1 = 5랭크(시작) ... 5 = 1랭크. 화면에는 rankNo(5~1)로 보여 준다.
+  function rankNo(st) { return 6 - st.rank; }
+  function rankName(st) { return DATA.RANK_NAMES[st.rank - 1]; }
+  function rivalName(i) {
+    const A = ['별빛', '달콩', '뭉게', '솜사탕', '도토리', '무지개', '포근', '반짝', '콩닥', '하늘', '바람', '노을', '새싹', '구슬', '보름달', '꿈꾸는', '햇살', '버들', '아침', '단풍'];
+    const B = ['인형방', '뽑기랜드', '드림샵', '플레이존', '월드', '스튜디오', '하우스', '센터', '파크', '클럽'];
+    return A[(i * 7 + 3) % A.length] + ' ' + B[(i * 3 + Math.floor(i / A.length)) % B.length] + (i >= 100 ? ' ' + (Math.floor(i / 100) + 1) + '호점' : '');
+  }
+  function rivalScore(i, day) { // i = 0(1위) ~ N-1. 점수는 순위 기본값에 시즌 변동과 서서히 성장
+    const N = Z.NATIONAL;
+    const base = N.TOP * Math.pow(i + 1, -N.EXP);
+    const grow = 1 - N.GROWTH + N.GROWTH * Math.min(1, day / N.GROWTH_DAYS) * 2; // 0.9 → 1.1
+    const wobble = 1 + 0.06 * Math.sin(day / 30 + i * 1.7);
+    return base * grow * wobble;
+  }
+  // 전국 순위표. 1랭크(단계 5)가 되어야 자세한 순위가 나온다. top = 상위 몇 명을 보여 줄지.
+  function leaderboard(st, top) {
+    const detail = st.rank >= Z.RANK_POP.length;
+    const rivals = [];
+    for (let i = 0; i < Z.NATIONAL.N; i++) rivals.push({ name: rivalName(i), score: rivalScore(i, st.day) });
+    rivals.sort((a, b) => b.score - a.score);
+    const pos = 1 + rivals.filter((r) => r.score > st.popularity).length;
+    const out = { detail, position: detail ? pos : null, total: Z.NATIONAL.N, score: st.popularity, entries: [] };
+    if (!detail) return out;
+    const all = rivals.slice();
+    all.splice(pos - 1, 0, { name: st.shopName || '내 가게', score: st.popularity, me: true });
+    all.forEach((r, i) => { r.pos = i + 1; });
+    out.entries = all.slice(0, top || 10);
+    if (pos > (top || 10)) out.entries = out.entries.concat(all.slice(Math.max(0, pos - 2), pos + 1)); // 내 주변
+    return out;
+  }
+
   return {
+    rankNo, rankName, leaderboard,
     newGame, startOfDay, runDay, forecast, autoPrep,
     buyMachine, sellMachine, expandWarehouse, expandShop, order, unitCost,
     loadMachine, unloadAll, refill, addStock,

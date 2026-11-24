@@ -219,6 +219,24 @@ const Cutscene = (function () {
   const ME_PAL = { h: '#4a3426', H: '#7a5640', s: '#ffd9b5', c: '#ff9fa0', m: '#c0584a', K: '#14324d', w: '#ffffff',
     b: '#3f8fe0', B: '#2c6cb8', t: '#7fbdf5', S: '#ffffff', y: '#ffd84a', p: '#3b5878', d: '#14324d' };
 
+  // 이상한 양복 사내(인형뽑기 애호가 클럽 회장): 주황 작은 모자, 둥근 안경, 흰 수염, 청록 양복에 주황 넥타이
+  const SUIT_FRONT = ME_FRONT.map((r, i) => ({
+    0: '....yyyyyy....',
+    4: '.hKKKssssKKKh.',
+    5: '.hKwKssssKwKh.',
+    6: '.hKKKssssKKKh.',
+    7: '.hssMMmmMMssh.',
+    11: '.bbbbbyybbbbb.',
+    12: '.bbbbbyybbbbb.',
+    13: '.bbbbbyybbbbb.',
+  }[i] || r));
+  const SUIT_PAL = Object.assign({}, ME_PAL, { h: '#d6d6d6', H: '#ffffff', M: '#f2f2f2', b: '#2aa198', B: '#1f7a73', S: '#2aa198', t: '#4cc4ba', y: '#ff8a3d', p: '#3a3a5c', c: '#ffd9b5' });
+  const KINDS = {
+    me: { front: ME_FRONT, blink: ME_BLINK, pal: ME_PAL },
+    suit: { front: SUIT_FRONT, blink: SUIT_FRONT, pal: SUIT_PAL },
+  };
+
+
   // 도트를 한 번만 이미지로 만들고, 바깥에 ink 테두리 1칸을 자동으로 두른다(스티커 같은 모양).
   const spriteImgs = new Map();
   function outlinedImg(rows, pal) {
@@ -683,9 +701,10 @@ const Cutscene = (function () {
         const mini = a.size === 'mini';
         const walking = !!a.mv;
         if (walking) a.faceLeft = a.mv.to < a.x;
-        let rows = mini ? ME_MINI : (a.pose === 'back' ? ME_BACK : (blink ? ME_BLINK : ME_FRONT));
+        const kind = KINDS[a.kind || 'me'];
+        let rows = mini ? ME_MINI : (a.pose === 'back' ? ME_BACK : (blink ? kind.blink : kind.front));
         if (walking) rows = mini ? ME_MINI_WALK[Math.floor(t * 6) % 2] : ME_WALK[Math.floor(t * 6) % 4];
-        const img = outlinedImg(rows);
+        const img = outlinedImg(rows, kind.pal);
         rect(pg, Math.round(a.x) - (mini ? 4 : 7), a.y - 1, mini ? 8 : 14, 2, 'rgba(20,50,77,0.22)'); // 발밑 그림자
         drawFacing(pg, img, Math.round(a.x), a.y - img.height + 1 - (walking && !mini ? hop : 0), walking && a.faceLeft);
       } })));

@@ -2,7 +2,7 @@
 const State = {
   data: null,
   fresh() {
-    return { playerName: '', shopName: '', money: CFG.START_MONEY, rank: CFG.START_RANK, day: 1 };
+    return { playerName: '', shopName: '', rankIntro: false, money: CFG.START_MONEY, rank: CFG.START_RANK, day: 1 };
   },
   load() {
     try {

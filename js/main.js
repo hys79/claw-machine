@@ -123,7 +123,7 @@
     nameError = '';
     showInput(next === 'name', { x: 240, y: 236, w: 480, h: 64 }, CFG.NAME_MAX, '이름 입력');
     if (next !== 'intro') Sound.ambient(null);
-    if (next === 'intro') Cutscene.start(ct(), () => { State.save(); go('shop'); }, cutHooks); // 프롤로그 컷신
+    if (next === 'intro') Cutscene.start(ct(), () => { State.data.rankIntro = true; State.save(); go('shop'); }, cutHooks); // 프롤로그 컷신
   }
 
   // 첫 시작: 주인공 이름을 정하고 컷신으로. 저장은 가게 이름까지 정한 뒤에 한다.

@@ -5,7 +5,8 @@ const DATA = {
     [['인형뽑기', 44, 'white'], [' 고수인 내가', 28, 'white']],
     [['최고 랭크 사장이', 64, 'yellow'], [' 되어보려고 합니다', 28, 'white']],
   ],
-  RANK_NAMES: ['동네 가게', '상권 대표', '도시 명소', '전국구', '세계구'],
+  // 가게 랭크는 5랭크(막 연 가게)에서 시작해 1랭크까지 오른다. 인덱스 0 = 5랭크 ... 4 = 1랭크(전국 순위가 표시된다).
+  RANK_NAMES: ['5랭크 · 동네 가게', '4랭크 · 상권 대표', '3랭크 · 도시 명소', '2랭크 · 지역 강자', '1랭크 · 전국구'],
 
   // 프롤로그 컷신 대본(대사 위주). {name}=플레이어 이름, {shop}=가게 이름, {이:shop}처럼 쓰면 그 이름의 받침에 맞는 조사(이/가, 은/는, 을/를)만 붙는다.
   // bg: arcade(오락실 안) | phone(핸드폰 뉴스) | site(공사 중인 아레나) | arena(완공된 아레나) | street(우리 가게가 있는 거리), light: 화면 색 입힘, crowd: 광장 구경꾼 수, walkers: 거리 행인 수
@@ -49,13 +50,36 @@ const DATA = {
       ['say', '{name}', '좋아, 오늘부터 여기가 내 가게다!'],
       ['title', '{shop}', '창동 아레나 옆, 작은 인형뽑기 가게'],
     ] },
+    // 개업 첫날: 클럽 회장이 나타나 랭크를 알려 준다(영업 화면이 생기면 "1일차 영업 시작" 때로 옮긴다)
+    { bg: 'street', walkers: 3, actors: [{ id: 'me', x: 100, y: 106 }, { id: 'suit', kind: 'suit', x: 262, y: 106 }], steps: [
+      ['wait', 0.4],
+      ['say', '{name}', '좋아, 오늘이 개업 첫날이다! 간판도 달았고, 기계도 채웠고…'],
+      ['move', 'suit', 156, 32, true],
+      ['emote', 'me', '!'], ['wait', 0.5],
+      ['say', '???', '허허, 거기 젊은 사장님. 잠깐 시간 괜찮으신가?'],
+      ['say', '{name}', '(…양복 색깔이 왜 저러지?) 네? 저, 저요?'],
+      ['say', '???', '실례했네. 나는 인형뽑기 애호가 클럽 회장이라고 하네.'],
+      ['say', '클럽 회장', '자네, 이 바닥에 "랭크"라는 게 있다는 건 알고 있나?'],
+      ['say', '{name}', '랭크요? 처음 듣는데요.'],
+      ['say', '클럽 회장', '전국의 인형뽑기 가게는 5랭크부터 1랭크까지 나뉘어 있지. 막 문을 연 가게는 모두 5랭크에서 시작한다네.'],
+      ['say', '클럽 회장', '랭크는 가게의 수익과 인기도로 정해지고, 1랭크에 오르면 그때부터 전국 순위가 매겨지지.'],
+      ['say', '{name}', '전국… 순위요?'],
+      ['say', '클럽 회장', '그렇다네. 그 꼭대기가 전국 1등이지. 자네 같은 신참이 오를 거라곤 아무도 생각 않겠지만… 허허.'],
+      ['emote', 'me', 'bulb'], ['wait', 0.9],
+      ['say', '{name}', '…재밌네요. 인형뽑기라면 자신 있으니까.'],
+      ['say', '{name}', '좋아요, 까짓거! 전국 1등, 한번 노려보겠습니다!'],
+      ['say', '클럽 회장', '허허허, 기대하고 있겠네. 개업 축하하네, {name} 사장.'],
+      ['move', 'suit', 270, 34, true],
+      ['say', '{name}', '…이상한 아저씨네. 그래도 목표가 생겼어. 자, 가게 문 열자!'],
+      ['title', '목표: 전국 1등', '5랭크에서 시작하는 인형뽑기 사장의 도전'],
+    ] },
   ],
   NAME_PROMPT: '당신의 이름은?',
 
   HOWTO: [
     '인형뽑기 고수인 주인공이 아레나 상권에 가게를 차려요.',
     '번 돈으로 기계, 인형, 시설을 업그레이드해요.',
-    '가게 랭크를 올려 인기도 랭킹 1위에 도전해요.',
+    '가게 랭크를 5랭크에서 1랭크까지 올려 전국 1등에 도전해요.',
     '돈이 다 떨어지면 폐업! 신중하게 운영하세요.',
   ],
   // 크레딧 화면 목록: 종류와 설명 줄. 새 폰트·음원·그림을 쓰면 여기와 assets/CREDITS.md에 함께 적는다.
@@ -179,6 +203,10 @@ DATA.DOLLS = [
   { id: 'bigbear', name: '뭉치 곰', size: 'L', cost: 7500, tier: 'normal', tags: ['동물', '귀여움'], hard: 0.1, rank: 1 },
   { id: 'koala', name: '낮잠 코알라 쿠션', size: 'L', cost: 8500, tier: 'normal', tags: ['동물', '귀여움'], hard: 0.15, rank: 1 },
   { id: 'bigdino', name: '대왕 공룡', size: 'L', cost: 9000, tier: 'normal', tags: ['공룡', '코믹'], hard: 0.2, rank: 1 },
+  { id: 'megabear', name: '거대 뭉치 곰', size: 'XL', cost: 28000, tier: 'normal', tags: ['동물', '귀여움'], hard: 0, rank: 1 },
+  { id: 'kingdino', name: '초대형 공룡 대왕', size: 'XL', cost: 34000, tier: 'normal', tags: ['공룡', '코믹'], hard: 0, rank: 2 },
+  { id: 'jumbocat', name: '점보 우주냥', size: 'XL', cost: 32000, tier: 'normal', tags: ['우주', '동물', '시크'], hard: 0, rank: 2 },
+  { id: 'arenajumbo', name: '아레나 응원 점보 곰', size: 'XL', cost: 42000, tier: 'limited', tags: ['공연', '동물', '한정'], hard: 0, rank: 3 },
   { id: 'rainbowsheep', name: '무지개 양', size: 'M', cost: 4200, tier: 'rare', tags: ['동물', '귀여움', '희귀'], hard: 0.3, rank: 2 },
   { id: 'moonrabbit', name: '달토끼 요정', size: 'M', cost: 4500, tier: 'rare', tags: ['우주', '동물', '시크', '희귀'], hard: 0.3, rank: 2 },
   { id: 'cheerbear', name: '응원봉 곰', size: 'L', cost: 11000, tier: 'limited', tags: ['공연', '동물', '한정'], hard: 0.25, rank: 2 },
@@ -189,28 +217,29 @@ DATA.DOLLS = [
 // attempts: 한 판에 집을 수 있는 횟수, playSec: 한 판에 걸리는 시간(초), ref: 손님이 느끼는 기준 가격
 DATA.MACHINES = {
   mini: {
-    id: 'mini', name: '소형 뽑기 기계', price: 700000, footprint: 1, slots: 24, sizes: ['S', 'M'], slotCost: { S: 1, M: 3 },
+    id: 'mini', name: '소형 뽑기 기계', rank: 1, price: 700000, footprint: 1, slots: 24, sizes: ['S', 'M'], slotCost: { S: 1, M: 3 },
     power: 1200, repair: 30000, playSec: 55, attempts: 1, grab: { S: 0.22, M: 0.07 }, priceDef: 500, priceRange: [300, 1000], ref: 500, appeal: 0.9,
     sizeAppeal: { S: 1.0, M: 0.9 },
     desc: '작고 저렴하다. 소형 인형 전용이고, 중형은 겨우 들어가며(칸을 많이 차지하고 잘 안 집힌다), 대형 인형은 들어가지 않는다.',
   },
   standard: {
-    id: 'standard', name: '일반 뽑기 기계', price: 1200000, footprint: 1, slots: 36, sizes: ['S', 'M', 'L'], slotCost: { S: 1, M: 2, L: 4 },
+    id: 'standard', name: '일반 뽑기 기계', rank: 1, price: 1200000, footprint: 1, slots: 36, sizes: ['S', 'M', 'L'], slotCost: { S: 1, M: 2, L: 4 },
     power: 2000, repair: 50000, playSec: 75, attempts: 1, grab: { S: 0.24, M: 0.13, L: 0.05 }, priceDef: 1000, priceRange: [500, 2000], ref: 1000, appeal: 1.0,
     sizeAppeal: { S: 1.0, M: 1.0, L: 0.95 },
     desc: '가장 무난한 기계. 모든 크기의 인형을 넣을 수 있다.',
   },
   big: {
-    id: 'big', name: '대형 뽑기 기계', price: 2800000, footprint: 2, slots: 24, sizes: ['S', 'M', 'L'], slotCost: { S: 1, M: 2, L: 3 },
+    id: 'big', name: '대형 뽑기 기계', rank: 2, price: 2800000, footprint: 2, slots: 24, sizes: ['S', 'M', 'L'], slotCost: { S: 1, M: 2, L: 3 },
     power: 3500, repair: 120000, playSec: 100, attempts: 1, grab: { S: 0.30, M: 0.17, L: 0.09 }, priceDef: 2000, priceRange: [1000, 4000], ref: 2000, appeal: 1.25,
     sizeAppeal: { S: 0.75, M: 1.0, L: 1.25 },
     desc: '점포 칸을 2개 차지하는 큰 기계. 대형 인형이 가장 잘 어울리고 눈에 띄지만 소형 인형은 휑해 보인다.',
   },
   timer: {
-    id: 'timer', name: '타이머 뽑기 기계', price: 1800000, footprint: 1, slots: 30, sizes: ['S', 'M', 'L'], slotCost: { S: 1, M: 2, L: 4 },
-    power: 2500, repair: 80000, playSec: 150, attempts: 3, grab: { S: 0.10, M: 0.065, L: 0.03 }, priceDef: 2000, priceRange: [1000, 4000], ref: 2000, appeal: 1.1,
-    sizeAppeal: { S: 0.95, M: 1.0, L: 1.05 },
-    desc: '제한 시간 안에 여러 번 집는 기계. 고수들이 좋아하고 한 판이 길다.',
+    id: 'timer', name: '타이머 뽑기 기계', rank: 2, kind: 'timer', price: 1800000, footprint: 1, slots: 10, sizes: ['L', 'XL'], slotCost: { L: 3, XL: 5 },
+    power: 2500, repair: 80000, playSec: 45, attempts: 1,
+    target: 10, tolerance: [0.04, 0.025, 0.012, 0.008, 0.005], sigma: 0.32, // 목표 시간(초), 단계별 허용 오차(±초), 평균 손님의 버튼 오차(표준편차, 초)
+    grab: { L: 1, XL: 1 }, priceDef: 2500, priceRange: [1500, 5000], ref: 2500, appeal: 1.35, sizeAppeal: { L: 1.0, XL: 1.7 },
+    desc: '정확히 10.00초에 버튼을 눌러야 경품을 주는 기계. 보통 엄청 큰 인형을 넣어 이목을 끈다. 집게 힘 대신 허용 오차로 난이도를 정하고, 고수 손님이 특히 잘 맞춘다.',
   },
 };
 
@@ -218,10 +247,10 @@ DATA.MACHINES = {
 // tagW/sizeW/machineW 선호 배수, time 시간대 가중
 DATA.CUSTOMERS = [
   { id: 'family', name: '가족 손님', weight: 1.0, budget: 6000, patience: 4, wait: 8, skill: 0.95, win: 0.4,
-    tagW: { 동물: 1.3, 귀여움: 1.4 }, sizeW: { S: 1.0, M: 1.2, L: 1.0 }, machineW: { mini: 1.1, standard: 1.1, big: 1.0, timer: 0.6 },
+    tagW: { 동물: 1.3, 귀여움: 1.4 }, sizeW: { S: 1.0, M: 1.2, L: 1.0, XL: 1.4 }, machineW: { mini: 1.1, standard: 1.1, big: 1.0, timer: 0.6 },
     time: { hours: [11, 17], mult: 1.7, off: 0.6, weekend: 1.4 } },
   { id: 'couple', name: '연인 손님', weight: 0.9, budget: 8000, patience: 5, wait: 10, skill: 1.0, win: 0.35,
-    tagW: { 귀여움: 1.3, 공연: 1.2 }, sizeW: { S: 0.7, M: 1.0, L: 1.6 }, machineW: { mini: 0.7, standard: 1.0, big: 1.4, timer: 0.9 },
+    tagW: { 귀여움: 1.3, 공연: 1.2 }, sizeW: { S: 0.7, M: 1.0, L: 1.6, XL: 1.8 }, machineW: { mini: 0.7, standard: 1.0, big: 1.4, timer: 0.9 },
     time: { hours: [17, 22], mult: 1.7, off: 0.7, weekend: 1.1 } },
   { id: 'student', name: '학생 손님', weight: 1.0, budget: 3500, patience: 3, wait: 6, skill: 1.0, win: 0.3,
     tagW: { 코믹: 1.4, 한정: 1.4, 공룡: 1.2 }, sizeW: { S: 1.2, M: 1.0, L: 0.7 }, machineW: { mini: 1.4, standard: 1.0, big: 0.7, timer: 0.9 },
@@ -230,9 +259,9 @@ DATA.CUSTOMERS = [
     tagW: { 희귀: 1.8, 한정: 1.6, 시크: 1.2 }, sizeW: { S: 0.8, M: 1.0, L: 1.2 }, machineW: { mini: 0.5, standard: 0.9, big: 1.1, timer: 1.7 },
     time: { hours: [19, 22], mult: 1.6, off: 0.8, weekend: 1.3 } },
   { id: 'tourist', name: '관광객 손님', weight: 0.5, budget: 8000, patience: 4, wait: 8, skill: 0.9, win: 0.4,
-    tagW: { 공연: 1.7, 한정: 1.4, 귀여움: 1.1 }, sizeW: { S: 1.0, M: 1.2, L: 1.1 }, machineW: { mini: 1.0, standard: 1.0, big: 1.0, timer: 1.0 },
+    tagW: { 공연: 1.7, 한정: 1.4, 귀여움: 1.1 }, sizeW: { S: 1.0, M: 1.2, L: 1.1, XL: 1.4 }, machineW: { mini: 1.0, standard: 1.0, big: 1.0, timer: 1.0 },
     time: { hours: [10, 22], mult: 1.0, off: 1.0, weekend: 1.3, show: 3.0 } },
   { id: 'browser', name: '구경 손님', weight: 0.8, budget: 2000, patience: 2, wait: 4, skill: 0.9, win: 0.2,
-    tagW: {}, sizeW: { S: 1.0, M: 1.0, L: 0.8 }, machineW: { mini: 1.2, standard: 1.0, big: 0.9, timer: 0.8 },
+    tagW: {}, sizeW: { S: 1.0, M: 1.0, L: 0.8, XL: 1.3 }, machineW: { mini: 1.2, standard: 1.0, big: 0.9, timer: 0.8 },
     time: { hours: [10, 22], mult: 1.0, off: 1.0, weekend: 1.0 } },
 ];
