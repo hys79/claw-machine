@@ -59,10 +59,22 @@ const DATA = {
     '..k.kkk.k..',
     '....kkk....',
   ],
-  // 메인 화면 그림(코드로 그리는 도트 풍경) 색
-  SCENE: {
-    skyTop: '#bfe3f5', skyBottom: '#e6f4fb', cloud: '#ffffff',
-    dome: '#c9d9e6', domeDark: '#9fb6c9', domeLine: '#14324d', sign: '#2f80d0',
-    ground: '#8aa9be', groundLine: '#14324d',
+  // 메인 화면 도트 풍경 색(js/scene.js에서 사용)
+  SCENE_PAL: {
+    skyTop: '#62b9ee', skyBottom: '#fbe6cc', sunGlow: '#fff3b8', sunCore: '#fffbe6',
+    cloud: '#ffffff', cloudShade: '#d6e6f4',
+    mtnBack: '#a6c0d8', mtnFront: '#8cadc9',
+    aptA: '#b7c8d9', aptB: '#a8bccf', aptC: '#c4d2e0', aptWin: '#e8f1f8', aptWarm: '#ffe2a0',
+    lawnA: '#8ad67e', lawnB: '#74c46c', lawnC: '#5eac5b', lawnLight: '#a3e293', lawnDark: '#4c9650',
+    river: '#8fd2f2', riverEdge: '#68b3de',
+    path: '#f1e5c9', pathEdge: '#d8c7a0', pathLight: '#fbf3df',
+    rim: '#dfe6ee', rimLight: '#f2f6fa', roof: '#78c47a', roofDark: '#5aa862', oculus: '#3a62c8', oculusHi: '#7099ea',
+    glassA: '#9fd6e8', glassB: '#6ab6d6', glassEdge: '#3f7fa8', glassWarm: '#d9a9d6', ledge: '#3f6c8f', outline: '#2d4a66',
+    skirtTop: '#dbe3eb', skirtMid: '#c3cdd8', skirtDark: '#98a7b8',
+    door: '#ffe9a0', doorFrame: '#2d4a66',
+    annex: '#e1e8ef', annexRoof: '#aab7c6', led1: '#7a5de0', led2: '#e06ad0',
+    dome: '#cfe8f8', domeHi: '#ffffff',
+    treeDark: '#2d7a47', tree: '#3f9a55', treeLight: '#6cc070', trunk: '#7a5230',
+    bird: '#2d4a66',
   },
 };

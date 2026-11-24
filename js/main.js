@@ -5,7 +5,6 @@
   const input = document.getElementById('nameInput');
   const C = CFG.COLOR;
   const L = CFG.LAYOUT;
-  const S = DATA.SCENE;
 
   let screen = 'title'; // title | intro | name | shop
   let modal = null;     // null | help | settings
@@ -59,65 +58,17 @@
 
   function won(n) { return n.toLocaleString('ko-KR') + '원'; }
 
-  // ---------- 도트 풍경(창동 아레나 느낌의 오리지널 그림) ----------
-  function drawScene(b) {
-    ctx.save();
-    ctx.beginPath();
-    ctx.rect(b.x, b.y, b.w, b.h);
-    ctx.clip();
-    const px = 6;
-    // 하늘(띠 두 개)
-    ctx.fillStyle = S.skyTop;
-    ctx.fillRect(b.x, b.y, b.w, b.h * 0.45);
-    ctx.fillStyle = S.skyBottom;
-    ctx.fillRect(b.x, b.y + b.h * 0.45, b.w, b.h * 0.55);
-    // 구름
-    ctx.fillStyle = S.cloud;
-    [[0.1, 0.12, 5], [0.72, 0.2, 6], [0.45, 0.08, 4]].forEach((c) => {
-      const cx = b.x + b.w * c[0], cy = b.y + b.h * c[1], n = c[2];
-      ctx.fillRect(cx, cy + px, n * px * 2, px);
-      ctx.fillRect(cx + px, cy, (n - 1) * px * 2 - px, px);
-    });
-    // 돔 아레나(줄마다 폭을 계산해 도트로 쌓는다)
-    const groundY = b.y + b.h * 0.78;
-    const domeW = Math.round(b.w * 0.62 / px) * px;
-    const rows = Math.round(b.h * 0.5 / px);
-    const cx = b.x + b.w / 2;
-    const halfAt = (r) => Math.round((domeW / 2) * Math.sqrt(1 - Math.pow((rows - 1 - r) / rows, 2)) / px) * px;
-    // 외곽선(한 칸 크게) → 안쪽 채우기
-    for (let r = 0; r < rows; r++) {
-      const y = groundY - (rows - r) * px;
-      ctx.fillStyle = S.domeLine;
-      ctx.fillRect(cx - halfAt(r) - px, y, halfAt(r) * 2 + px * 2, px);
-    }
-    ctx.fillRect(cx - halfAt(0), groundY - rows * px - px, halfAt(0) * 2, px);
-    for (let r = 0; r < rows; r++) {
-      const y = groundY - (rows - r) * px;
-      ctx.fillStyle = r % 4 === 3 ? S.domeDark : (r < rows / 2 ? S.dome : S.domeDark);
-      ctx.fillRect(cx - halfAt(r), y, halfAt(r) * 2, px);
-    }
-    // 간판
-    const sw = 14 * px, sh = 3 * px;
-    ctx.fillStyle = S.domeLine;
-    ctx.fillRect(cx - sw / 2 - 4, groundY - 5 * px - 4, sw + 8, sh + 8);
-    ctx.fillStyle = S.sign;
-    ctx.fillRect(cx - sw / 2, groundY - 5 * px, sw, sh);
-    ctx.fillStyle = C.white;
-    for (let i = 0; i < 5; i++) ctx.fillRect(cx - sw / 2 + px + i * 2.4 * px, groundY - 5 * px + px, px, px);
-    // 바닥
-    ctx.fillStyle = S.ground;
-    ctx.fillRect(b.x, groundY, b.w, b.y + b.h - groundY);
-    ctx.fillStyle = S.groundLine;
-    ctx.fillRect(b.x, groundY, b.w, 4);
-    // 인형뽑기 기계 세 대
-    const s = Math.max(3, Math.floor(b.h / 44));
-    const mh = DATA.CLAW_MACHINE.length * s;
-    const my = Math.min(groundY + 6 * s - mh + 8, b.y + b.h - mh);
-    [0.1, 0.27, 0.73, 0.9].forEach((f) => sprite(DATA.CLAW_MACHINE, b.x + b.w * f - 8 * s, my, s));
-    ctx.restore();
+  // 글자 테두리(배경 그림 위에서도 잘 읽히게)
+  function outlineText(str, x, y, size, fill) {
+    ctx.font = font(size);
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.lineJoin = 'round';
+    ctx.lineWidth = Math.max(6, Math.round(size / 4));
     ctx.strokeStyle = C.ink;
-    ctx.lineWidth = 4;
-    ctx.strokeRect(b.x - 2, b.y - 2, b.w + 4, b.h + 4);
+    ctx.strokeText(str, x, y);
+    ctx.fillStyle = fill;
+    ctx.fillText(str, x, y);
   }
 
   // ---------- 입력 영역 ----------
@@ -205,27 +156,20 @@
   input.addEventListener('keydown', (e) => { if (e.key === 'Enter') submitName(); });
 
   // ---------- 화면별 그리기 ----------
-  function drawTitle() {
-    // 제목 배너
-    const t = L.titleBox;
-    box(t, C.banner);
-    ctx.fillStyle = C.blueLight;
-    ctx.fillRect(t.x, t.y, t.w, 6);
-    text(DATA.TITLE_LINES[0], t.x + t.w / 2, t.y + 52, 32, C.white);
-    text(DATA.TITLE_LINES[1], t.x + t.w / 2, t.y + 100, 32, C.yellow);
-    // 풍경
-    drawScene(L.sceneBox);
-    // 버튼
+  function drawTitle(t) {
+    Scene.draw(ctx, t);
+    outlineText(DATA.TITLE_LINES[0], 480, 58, 40, C.white);
+    outlineText(DATA.TITLE_LINES[1], 480, 112, 40, C.yellow);
+    outlineText(DATA.SUBTITLE, 480, 160, 22, C.white);
     mainButton(L.startBtn, State.hasSave() ? '이어하기' : '시작하기');
     subButton(L.helpBtn, '게임 설명');
-    // 설정 아이콘
     const sb = L.settingsBtn;
     box(sb, C.white);
     sprite(DATA.GEAR, sb.x + (sb.w - 11 * 5) / 2, sb.y + (sb.h - 11 * 5) / 2, 5);
   }
 
   function drawIntro() {
-    drawScene({ x: 0, y: 0, w: CFG.W, h: 400 });
+    Scene.draw(ctx, now);
     const d = { x: 40, y: 420, w: 880, h: 130 };
     box(d, C.white);
     text(DATA.INTRO[introIdx], d.x + 30, d.y + 52, 26, C.ink, 'left');
@@ -275,10 +219,12 @@
     }
   }
 
-  function draw() {
+  let now = 0;
+  function draw(ts) {
+    now = (ts || 0) / 1000;
     ctx.fillStyle = C.bg;
     ctx.fillRect(0, 0, CFG.W, CFG.H);
-    if (screen === 'title') drawTitle();
+    if (screen === 'title') drawTitle(now);
     else if (screen === 'intro') drawIntro();
     else if (screen === 'name') drawName();
     else drawShop();
@@ -288,7 +234,7 @@
 
   // 폰트가 로드된 뒤 시작(실패해도 1.5초 후 시작)
   let started = false;
-  function start() { if (started) return; started = true; draw(); }
+  function start() { if (started) return; started = true; requestAnimationFrame(draw); }
   if (document.fonts && document.fonts.load) {
     document.fonts.load('20px ' + CFG.FONT, '가나다').then(start, start);
     setTimeout(start, 1500);

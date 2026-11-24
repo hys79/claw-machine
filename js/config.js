@@ -22,12 +22,10 @@ const CFG = {
     alert: '#d9455f',
     yellow: '#ffd84a',
   },
-  // 메인 화면 배치(목업 기준)
+  // 메인 화면 배치(배경 그림 위에 겹쳐 놓는 요소)
   LAYOUT: {
-    titleBox: { x: 180, y: 28, w: 600, h: 150 },
-    sceneBox: { x: 180, y: 196, w: 600, h: 214 },
-    startBtn: { x: 180, y: 436, w: 290, h: 80 },
-    helpBtn: { x: 490, y: 436, w: 290, h: 80 },
+    startBtn: { x: 180, y: 480, w: 290, h: 72 },
+    helpBtn: { x: 490, y: 480, w: 290, h: 72 },
     settingsBtn: { x: 852, y: 28, w: 80, h: 80 },
   },
 };
