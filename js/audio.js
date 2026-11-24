@@ -1,10 +1,10 @@
-// 소리: 음원 파일 없이 Web Audio로 직접 합성한다(효과음·배경음악·주변 소리 모두 이 게임을 위해 만든 오리지널).
+// 소리: 효과음과 분위기 소리는 Web Audio로 직접 합성하고, 배경음악은 assets/audio/background.mp3 한 곡을 반복 재생한다(출처: 크레딧 화면 / assets/CREDITS.md).
 // 음량·음소거 설정은 게임 저장과 따로 localStorage에 저장한다. 브라우저 정책상 첫 클릭/키 입력(unlock) 뒤부터 소리가 난다.
 const Sound = (function () {
   const A = CFG.AUDIO;
   const st = Object.assign({ bgm: A.BGM_DEFAULT, sfx: A.SFX_DEFAULT, bgmMute: false, sfxMute: false }, load());
-  let ac = null, master, bgmG, sfxG, noiseBuf;
-  let wantBgm = null, curBgm = null, trackG = null, bgmTimer = null, bgmStep = 0, bgmNext = 0;
+  let ac = null, master, sfxG, noiseBuf;
+  let music = null; // 배경음악(HTMLAudioElement)
   let amb = null;
 
   function load() { try { return JSON.parse(localStorage.getItem(A.SAVE_KEY) || '{}'); } catch (e) { return {}; } }
@@ -16,8 +16,8 @@ const Sound = (function () {
     if (!AC) return false;
     ac = new AC();
     master = ac.createGain(); master.gain.value = 0.9; master.connect(ac.destination);
-    bgmG = ac.createGain(); sfxG = ac.createGain();
-    bgmG.connect(master); sfxG.connect(master);
+    sfxG = ac.createGain();
+    sfxG.connect(master);
     noiseBuf = ac.createBuffer(1, ac.sampleRate * 2, ac.sampleRate);
     const d = noiseBuf.getChannelData(0);
     for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
@@ -25,20 +25,29 @@ const Sound = (function () {
     return true;
   }
   function apply() {
-    if (!ac) return;
-    bgmG.gain.setTargetAtTime(st.bgmMute ? 0 : st.bgm * 0.5, ac.currentTime, 0.03);
-    sfxG.gain.setTargetAtTime(st.sfxMute ? 0 : st.sfx, ac.currentTime, 0.03);
+    if (music) music.volume = st.bgmMute ? 0 : Math.min(1, st.bgm * A.BGM_GAIN);
+    if (ac) sfxG.gain.setTargetAtTime(st.sfxMute ? 0 : st.sfx, ac.currentTime, 0.03);
   }
-  // 첫 사용자 입력에서 호출: 오디오를 깨우고, 기다리던 배경음악을 시작한다.
+  // 배경음악: 한 곡을 계속 반복한다(화면·장면이 바뀌어도 끊기지 않는다).
+  function startMusic() {
+    if (!music) {
+      music = new Audio(A.BGM_FILE);
+      music.loop = true;
+      music.preload = 'auto';
+      apply();
+    }
+    if (music.paused) { const p = music.play(); if (p && p.catch) p.catch(() => {}); }
+  }
+  // 첫 사용자 입력에서 호출: 오디오를 깨우고 배경음악을 시작한다.
   function unlock() {
-    if (!ensure()) return;
-    if (ac.state === 'suspended') ac.resume();
-    if (wantBgm && curBgm !== wantBgm) startBgm(wantBgm);
+    if (ensure() && ac.state === 'suspended') ac.resume();
+    startMusic();
   }
   document.addEventListener('visibilitychange', () => {
-    if (!ac) return;
-    if (document.hidden) ac.suspend(); else ac.resume();
+    if (document.hidden) { if (ac) ac.suspend(); if (music) music.pause(); }
+    else { if (ac) ac.resume(); if (music && unlocked()) startMusic(); }
   });
+  const unlocked = () => !!music; // 한 번이라도 시작했으면 true
 
   // ---------- 소리 재료 ----------
   const mtof = (m) => 440 * Math.pow(2, (m - 69) / 12);
@@ -130,81 +139,8 @@ const Sound = (function () {
     a.timer = setTimeout(loop, 400);
   }
 
-  // ---------- 배경음악: 코드 진행으로 멜로디를 만든 짧은 반복곡 ----------
-  function rngMaker(seed) {
-    let a = seed >>> 0;
-    return function () {
-      a = (a + 0x6D2B79F5) >>> 0;
-      let t = Math.imul(a ^ (a >>> 15), 1 | a);
-      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-    };
-  }
-  // prog: [[근음, 'M'|'m'], ...] (마디당 8스텝), mask: 한 마디의 멜로디 자리
-  function makeTrack(o) {
-    const r = rngMaker(o.seed), lead = [], bass = [];
-    o.prog.forEach(([root, q]) => {
-      const tones = [0, q === 'm' ? 3 : 4, 7];
-      for (let s = 0; s < 8; s++) {
-        if (o.mask[s]) lead.push(root + 12 + tones[Math.floor(r() * 3)] + (r() < 0.35 ? 12 : 0) + (r() < 0.12 ? 2 : 0));
-        else lead.push(null);
-        bass.push(s === 0 ? root - 12 : (s === 4 ? root - 12 + 7 : null));
-      }
-    });
-    return { bpm: o.bpm, lead, bass, len: lead.length, wave: o.wave, vol: o.vol, drums: o.drums };
-  }
-  const DRUM_FULL = ['k', null, 'h', null, 's', null, 'h', null];
-  const DRUM_LIGHT = ['k', null, 'h', null, null, null, 'h', null];
-  const TRACKS = {
-    title: makeTrack({ bpm: 118, seed: 1, wave: 'square', vol: 0.06, drums: DRUM_FULL, mask: [1, 0, 1, 1, 0, 1, 1, 0], prog: [[60, 'M'], [57, 'm'], [53, 'M'], [55, 'M']] }),
-    arcade: makeTrack({ bpm: 140, seed: 2, wave: 'square', vol: 0.055, drums: DRUM_FULL, mask: [1, 1, 0, 1, 1, 0, 1, 1], prog: [[60, 'M'], [55, 'M'], [57, 'm'], [53, 'M']] }),
-    news: makeTrack({ bpm: 96, seed: 3, wave: 'sawtooth', vol: 0.04, drums: DRUM_LIGHT, mask: [1, 0, 0, 1, 0, 0, 1, 0], prog: [[57, 'm'], [53, 'M'], [50, 'm'], [52, 'M']] }),
-    site: makeTrack({ bpm: 90, seed: 4, wave: 'triangle', vol: 0.12, drums: null, mask: [1, 0, 1, 0, 1, 0, 0, 1], prog: [[50, 'm'], [58, 'M'], [53, 'M'], [48, 'M']] }),
-    story: makeTrack({ bpm: 104, seed: 5, wave: 'triangle', vol: 0.12, drums: DRUM_LIGHT, mask: [1, 0, 1, 1, 0, 1, 0, 0], prog: [[53, 'M'], [48, 'M'], [50, 'm'], [58, 'M']] }),
-    happy: makeTrack({ bpm: 124, seed: 6, wave: 'square', vol: 0.055, drums: DRUM_FULL, mask: [1, 0, 1, 1, 1, 0, 1, 1], prog: [[60, 'M'], [53, 'M'], [55, 'M'], [60, 'M']] }),
-    shop: makeTrack({ bpm: 100, seed: 7, wave: 'triangle', vol: 0.12, drums: DRUM_LIGHT, mask: [1, 0, 0, 1, 0, 1, 0, 0], prog: [[60, 'M'], [57, 'm'], [50, 'm'], [55, 'M']] }),
-  };
-
-  function playStep(tr, i, t, d) {
-    const L = tr.lead[i], B = tr.bass[i];
-    if (L != null) tone(mtof(L), t, d * 0.9, tr.wave, tr.vol, trackG);
-    if (B != null) tone(mtof(B), t, d * 3.2, 'triangle', 0.15, trackG);
-    const dr = tr.drums && tr.drums[i % 8];
-    if (dr === 'k') tone(130, t, 0.12, 'sine', 0.22, trackG, 45);
-    else if (dr === 'h') noise(t, 0.03, 0.04, 7000, trackG, 'highpass');
-    else if (dr === 's') noise(t, 0.08, 0.07, 2500, trackG, 'bandpass');
-  }
-  function schedule() {
-    const tr = TRACKS[curBgm];
-    if (!tr || !ac) return;
-    const d = 60 / tr.bpm / 2;
-    while (bgmNext < ac.currentTime + 0.25) {
-      playStep(tr, bgmStep % tr.len, bgmNext, d);
-      bgmNext += d; bgmStep++;
-    }
-  }
-  function startBgm(name) {
-    if (!ensure()) return;
-    const old = trackG;
-    if (old) { old.gain.setTargetAtTime(0, ac.currentTime, 0.15); setTimeout(() => { try { old.disconnect(); } catch (e) {} }, 900); }
-    curBgm = name;
-    trackG = ac.createGain();
-    trackG.gain.setValueAtTime(0.0001, ac.currentTime);
-    trackG.gain.setTargetAtTime(1, ac.currentTime + 0.05, 0.25);
-    trackG.connect(bgmG);
-    bgmStep = 0; bgmNext = ac.currentTime + 0.08;
-    clearInterval(bgmTimer);
-    bgmTimer = setInterval(schedule, 50);
-  }
-  // 틀 곡 이름(title/arcade/news/site/story/happy/shop). 첫 입력 전이면 입력 뒤에 시작한다.
-  function bgm(name) {
-    wantBgm = name;
-    if (!ac) return; // 첫 입력(unlock) 전에는 기억만 해 둔다
-    if (curBgm !== name) startBgm(name);
-  }
-
   return {
-    unlock, sfx, bgm, ambient,
+    unlock, sfx, ambient,
     get: () => ({ bgm: st.bgm, sfx: st.sfx, bgmMute: st.bgmMute, sfxMute: st.sfxMute }),
     setBgm: (v) => { st.bgm = v; apply(); save(); },
     setSfx: (v) => { st.sfx = v; apply(); save(); },

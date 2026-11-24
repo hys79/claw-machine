@@ -38,19 +38,21 @@ const CFG = {
   MAX_W: 1440,
   // 화면 배치(가운데 960 영역 기준)
   LAYOUT: {
-    startBtn: { x: 252, y: 490, w: 240, h: 56 },
-    helpBtn: { x: 508, y: 490, w: 200, h: 56 },
+    startBtn: { x: 164, y: 490, w: 240, h: 56 },
+    helpBtn: { x: 420, y: 490, w: 200, h: 56 },
+    creditsBtn: { x: 636, y: 490, w: 160, h: 56 },
     backBtn: { x: 16, y: 520, w: 150, h: 44 },    // 서브 화면 왼쪽 아래(공통)
-    moneyPill: { x: 16, y: 12, w: 210, h: 40 },   // 왼쪽 위 소지금 알약(공통)
+    moneyPill: { x: 16, y: 14, w: 190, h: 32 },   // 왼쪽 위 소지금 알약(공통)
     skipBtn: { x: 804, y: 16, w: 140, h: 44 },    // 프롤로그 건너뛰기
     dialog: { x: 40, y: 396, w: 880, h: 156 },    // 대사창
     cutDialog: { x: 40, y: 436, w: 880, h: 118 }, // 컷신 대사창(그림을 덜 가리게 낮고 납작하게)
     namePanel: { x: 200, y: 84, w: 560, h: 372 }, // 가게 신청서(이름 입력)
     helpPanel: { x: 160, y: 88, w: 640, h: 420 },
+    creditsPanel: { x: 160, y: 60, w: 640, h: 470 },
     settingsPanel: { x: 240, y: 70, w: 480, h: 440 },
   },
-  SETTINGS_BTN: { size: 56, margin: 16 }, // 화면 오른쪽 위 모서리 기준
+  SETTINGS_BTN: { size: 40, margin: 14 }, // 화면 오른쪽 위 모서리 기준
   // 소리 기본값(0~1)과 저장 위치(게임 저장과 별개)
-  AUDIO: { SAVE_KEY: 'claw-machine-audio', BGM_DEFAULT: 0.6, SFX_DEFAULT: 0.8 },
+  AUDIO: { SAVE_KEY: 'claw-machine-audio', BGM_FILE: 'assets/audio/background.mp3', BGM_GAIN: 0.8, BGM_DEFAULT: 0.6, SFX_DEFAULT: 0.8 },
   TYPE_SPEED: 32, // 프롤로그 글자 출력 속도(글자/초)
 };

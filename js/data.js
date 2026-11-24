@@ -58,7 +58,13 @@ const DATA = {
     '가게 랭크를 올려 인기도 랭킹 1위에 도전해요.',
     '돈이 다 떨어지면 폐업! 신중하게 운영하세요.',
   ],
-  CREDIT_LINE: '폰트: Galmuri (SIL OFL 1.1)',
+  // 크레딧 화면 목록: 종류와 설명 줄. 새 폰트·음원·그림을 쓰면 여기와 assets/CREDITS.md에 함께 적는다.
+  CREDITS: [
+    { kind: '폰트', lines: ['Galmuri (갈무리) - SIL Open Font License 1.1', 'github.com/quiple/galmuri'] },
+    { kind: '배경음악', lines: ['Sharou - しゅわしゅわハニーレモン350ml', '저작권 프리 음원'] },
+    { kind: '효과음', lines: ['직접 제작 (Web Audio로 합성)'] },
+    { kind: '그림·캐릭터', lines: ['도트 그림과 캐릭터는 모두 직접 만든 오리지널'] },
+  ],
 
   // 도트 스프라이트. 팔레트 글자 → 색
   PALETTE: { k: '#14324d', r: '#ff77a8', w: '#fff1e8', g: '#8fd3ff', y: '#ffd84a', p: '#ff9fc2', a: '#ffffff', b: '#b9d6ee' },

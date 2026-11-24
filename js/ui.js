@@ -185,8 +185,8 @@ const UI = (function () {
   // 소지금 알약(왼쪽 위 공통): 흰 상자
   function moneyPill(b, amount) {
     chip(b);
-    coin(b.x + 10, b.y + (b.h - 24) / 2, 3);
-    text(amount, b.x + b.w - 12, b.y + b.h / 2, 18, C.ink, 'right');
+    coin(b.x + 9, b.y + (b.h - 16) / 2, 2);
+    text(amount, b.x + b.w - 10, b.y + b.h / 2, 16, C.ink, 'right');
   }
 
   // 슬라이더: 트랙(파란 채움) + 흰 손잡이. value 0~1. o: {onChange, onEnd, modal, disabled, dim(음소거처럼 흐리게)}

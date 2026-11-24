@@ -118,14 +118,12 @@
   // ---------- 화면 전환 ----------
   function go(next) {
     screen = next;
-    modal = null;
+    setModal(null);
     confirmWipe = false;
     nameError = '';
     showInput(next === 'name', { x: 240, y: 236, w: 480, h: 64 }, CFG.NAME_MAX, '이름 입력');
     if (next !== 'intro') Sound.ambient(null);
-    if (next === 'title' || next === 'name') Sound.bgm('title');
-    else if (next === 'shop') Sound.bgm('shop');
-    if (next === 'intro') Cutscene.start(now, () => { State.save(); go('shop'); }, cutHooks); // 프롤로그 컷신
+    if (next === 'intro') Cutscene.start(ct(), () => { State.save(); go('shop'); }, cutHooks); // 프롤로그 컷신
   }
 
   // 첫 시작: 주인공 이름을 정하고 컷신으로. 저장은 가게 이름까지 정한 뒤에 한다.
@@ -144,7 +142,16 @@
     value: () => input.value,
   };
 
-  function closeModal() { modal = null; confirmWipe = false; }
+  // 팝업이 열려 있는 동안 컷신 시간은 멈춘다(설정을 열어도 이야기가 흘러가지 않게).
+  let pausedAt = 0, pausedTotal = 0;
+  const ct = () => (modal ? pausedAt : now) - pausedTotal;
+  function setModal(m) {
+    if (m && !modal) pausedAt = now;
+    if (!m && modal) pausedTotal += now - pausedAt;
+    modal = m;
+    input.style.visibility = m ? 'hidden' : 'visible'; // 입력칸이 팝업 위로 떠 보이지 않게
+  }
+  function closeModal() { setModal(null); confirmWipe = false; }
 
   // ---------- 입력 ----------
   function onPress(e) {
@@ -154,7 +161,7 @@
     const p = pointer(e);
     UI.setMouse({ x: p.x, y: p.y, on: !e.touches }); // 터치는 호버 없음
     if (UI.click(p)) return;
-    if (!modal && screen === 'intro') Cutscene.advance(now); // 빈 곳을 눌러도 진행
+    if (!modal && screen === 'intro') Cutscene.advance(ct()); // 빈 곳을 눌러도 진행
   }
   cv.addEventListener('mousedown', onPress);
   cv.addEventListener('touchstart', onPress, { passive: false });
@@ -168,21 +175,21 @@
   input.addEventListener('input', () => { nameError = ''; });
   input.addEventListener('keydown', (e) => {
     if (e.key !== 'Enter') return;
-    if (screen === 'name') submitName(); else if (screen === 'intro') Cutscene.submit(now);
+    if (screen === 'name') submitName(); else if (screen === 'intro') Cutscene.submit(ct());
   });
   window.addEventListener('resize', resize);
 
-  // Esc: 팝업 닫기 → 이전 화면 → (타이틀에서는) 설정 열기
+  // Esc: 팝업 닫기 → (타이틀·컷신에서는) 설정 열기 → 그 밖에는 이전 화면
   window.addEventListener('keydown', (e) => {
     Sound.unlock();
     if (e.key === 'Escape') {
       Sound.sfx('back');
       if (modal) closeModal();
-      else if (screen === 'title') modal = 'settings';
+      else if (screen === 'title' || screen === 'intro') setModal('settings');
       else go('title');
     } else if ((e.key === 'Enter' || e.key === ' ') && e.target !== input && !modal && screen === 'intro') {
       e.preventDefault();
-      Cutscene.advance(now);
+      Cutscene.advance(ct());
     }
   });
 
@@ -191,10 +198,10 @@
   function drawGearButton() {
     UI.button(settingsRect(), '', {
       bare: true,
-      onClick: () => { modal = 'settings'; },
+      onClick: () => setModal('settings'),
       draw(x, y, w, h) {
-        const gs = 4, gw = DATA.GEAR[0].length * gs;
-        sprite(DATA.GEAR, x + (w - gw) / 2, y + (h - gw) / 2, gs, C.ink, 3);
+        const gs = 2, gw = DATA.GEAR[0].length * gs;
+        sprite(DATA.GEAR, x + (w - gw) / 2, y + (h - gw) / 2, gs, C.ink, 2);
       },
     });
   }
@@ -229,18 +236,22 @@
       style: 'primary',
       onClick: () => { if (State.hasSave()) go('shop'); else go('name'); },
     });
-    UI.button(L.helpBtn, '게임 설명', { style: 'secondary', onClick: () => { modal = 'help'; } });
+    UI.button(L.helpBtn, '게임 설명', { style: 'secondary', onClick: () => setModal('help') });
+    UI.button(L.creditsBtn, '크레딧', { style: 'secondary', onClick: () => setModal('credits') });
     ctx.restore();
     drawGearButton();
   }
 
   function drawIntro() {
-    Cutscene.draw(ctx, now, W, H, OX);
-    if (screen !== 'intro') return; // 마지막 장면이 끝나 이름 입력으로 넘어간 경우
+    Cutscene.draw(ctx, ct(), W, H, OX);
+    if (screen !== 'intro') return; // 마지막 장면이 끝나 가게 화면으로 넘어간 경우
+    const g = settingsRect();
     ctx.save();
     ctx.translate(OX, 0);
-    UI.button(L.skipBtn, '건너뛰기', { style: 'secondary', size: 18, onClick: () => Cutscene.skip(now) });
+    // 건너뛰기는 설정 아이콘 왼쪽에 둔다
+    UI.button({ x: g.x - 14 - L.skipBtn.w - OX, y: g.y - 2, w: L.skipBtn.w, h: L.skipBtn.h }, '건너뛰기', { style: 'secondary', size: 18, onClick: () => Cutscene.skip(ct()) });
     ctx.restore();
+    drawGearButton();
   }
 
   function drawName() {
@@ -273,15 +284,15 @@
   function soundRow(sp, cy, label, key) {
     const snd = Sound.get();
     const muted = snd[key + 'Mute'], vol = snd[key];
-    UI.button({ x: sp.x + 30, y: cy - 26, w: 52, h: 52 }, '', {
+    UI.button({ x: sp.x + 30, y: cy - 20, w: 40, h: 40 }, '', {
       style: 'secondary', modal: true, sfx: 'none',
       onClick: () => { if (key === 'bgm') Sound.toggleBgmMute(); else Sound.toggleSfxMute(); },
       draw(x, y, w, h) {
-        UI.sprite(muted ? DATA.ICON_SPEAKER.off : DATA.ICON_SPEAKER.on, muted ? C.alert : C.ink, x + (w - 42) / 2, y + (h - 36) / 2, 3);
+        UI.sprite(muted ? DATA.ICON_SPEAKER.off : DATA.ICON_SPEAKER.on, muted ? C.alert : C.ink, x + (w - 28) / 2, y + (h - 24) / 2, 2);
       },
     });
-    UI.text(label, sp.x + 104, cy - 18, 18, muted ? C.sub : C.ink, 'left');
-    UI.slider({ x: sp.x + 104, y: cy - 2, w: sp.w - 104 - 100, h: 28 }, vol, {
+    UI.text(label, sp.x + 90, cy - 18, 18, muted ? C.sub : C.ink, 'left');
+    UI.slider({ x: sp.x + 90, y: cy - 2, w: sp.w - 90 - 100, h: 28 }, vol, {
       modal: true, dim: muted,
       onChange: (v) => { if (key === 'bgm') Sound.setBgm(v); else Sound.setSfx(v); },
       onEnd: () => Sound.sfx('click'),
@@ -293,7 +304,23 @@
     UI.scrim(W, H);
     ctx.save();
     ctx.translate(OX, 0);
-    if (modal === 'help') {
+    if (modal === 'credits') {
+      const hp = L.creditsPanel;
+      UI.panel(hp, C.white);
+      UI.text('크레딧', 480, hp.y + 44, 30, C.ink);
+      UI.hline(hp.x + 30, hp.y + 70, hp.w - 60);
+      let y = hp.y + 104;
+      DATA.CREDITS.forEach((c) => {
+        UI.rect(hp.x + 34, y - 4, 8, 8, C.blue);
+        UI.text(c.kind, hp.x + 56, y, 18, C.blue, 'left');
+        y += 26;
+        c.lines.forEach((ln) => {
+          UI.wrap(ln, hp.w - 112, 16).forEach((w) => { UI.text(w, hp.x + 56, y, 16, C.ink, 'left'); y += 21; });
+        });
+        y += 12;
+      });
+      UI.button({ x: 360, y: hp.y + hp.h - 78, w: 240, h: 52 }, '닫기', { style: 'primary', modal: true, onClick: closeModal });
+    } else if (modal === 'help') {
       const hp = L.helpPanel;
       UI.panel(hp, C.white);
       UI.text('게임 설명', 480, hp.y + 44, 30, C.ink);
@@ -314,7 +341,9 @@
       soundRow(sp, sp.y + 118, '배경음악', 'bgm');
       soundRow(sp, sp.y + 190, '효과음', 'sfx');
       UI.hline(sp.x + 30, sp.y + 226, sp.w - 60);
-      if (State.hasSave()) {
+      if (screen === 'intro') {
+        UI.button({ x: 300, y: sp.y + 246, w: 360, h: 52 }, '타이틀로 나가기', { style: 'secondary', modal: true, onClick: () => go('title') });
+      } else if (State.hasSave()) {
         UI.button({ x: 300, y: sp.y + 246, w: 360, h: 52 }, confirmWipe ? '정말 지울까요? 한 번 더' : '처음부터 다시', {
           style: confirmWipe ? 'danger' : 'secondary',
           modal: true,
@@ -325,7 +354,6 @@
       } else {
         UI.text('저장된 데이터가 없어요', 480, sp.y + 272, 20, C.sub);
       }
-      UI.text(DATA.CREDIT_LINE, 480, sp.y + 328, 16, C.sub);
       UI.button({ x: 360, y: sp.y + sp.h - 76, w: 240, h: 52 }, '닫기', { style: 'primary', modal: true, onClick: closeModal });
     }
     ctx.restore();
@@ -352,7 +380,6 @@
   }
 
   resize();
-  Sound.bgm('title'); // 첫 클릭/키 입력 뒤부터 들린다
 
   // 폰트가 로드된 뒤 시작(실패해도 1.5초 후 시작)
   let started = false;

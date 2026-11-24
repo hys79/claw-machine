@@ -524,7 +524,6 @@ const Cutscene = (function () {
     nextScene(now);
   }
 
-  const BGM_OF = { arcade: 'arcade', phone: 'news', site: 'site', arena: 'story', street: 'happy' };
   const AMBIENT_OF = { arcade: 'arcade', site: 'site', arena: 'crowd', street: 'street' };
 
   function nextScene(now) {
@@ -537,8 +536,7 @@ const Cutscene = (function () {
     st.walkers = makeWalkers(sc.walkers || 0);
     st.emotes = []; st.say = null; st.block = null; st.title = null; st.i = 0;
     st.phase = 'in'; st.pt = now;
-    Sound.bgm(BGM_OF[st.bg]);      // 장면에 맞는 배경음악과 주변 소리
-    Sound.ambient(AMBIENT_OF[st.bg]);
+    Sound.ambient(AMBIENT_OF[st.bg]); // 장면에 맞는 주변 소리(배경음악은 한 곡을 계속 재생)
     if (st.si > 0) Sound.sfx('whoosh');
   }
 
