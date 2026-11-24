@@ -51,7 +51,7 @@ const DATA = {
       ['title', '{shop}', '창동 아레나 옆, 작은 인형뽑기 가게'],
     ] },
     // 개업 첫날: 클럽 회장이 나타나 랭크를 알려 준다(영업 화면이 생기면 "1일차 영업 시작" 때로 옮긴다)
-    { bg: 'street', walkers: 3, actors: [{ id: 'me', x: 100, y: 106 }, { id: 'suit', kind: 'suit', x: 262, y: 106 }], steps: [
+    { bg: 'street', walkers: 3, actors: [{ id: 'me', x: 100, y: 106 }, { id: 'suit', kind: 'suit', x: 420, y: 106 }], steps: [
       ['wait', 0.4],
       ['say', '{name}', '좋아, 오늘이 개업 첫날이다! 간판도 달았고, 기계도 채웠고…'],
       ['move', 'suit', 156, 32, true],

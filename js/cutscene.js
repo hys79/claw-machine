@@ -232,7 +232,9 @@ const Cutscene = (function () {
   }[i] || r));
   const SUIT_PAL = Object.assign({}, ME_PAL, { h: '#d6d6d6', H: '#ffffff', M: '#f2f2f2', b: '#2aa198', B: '#1f7a73', S: '#2aa198', t: '#4cc4ba', y: '#ff8a3d', p: '#3a3a5c', c: '#ffd9b5' });
   // 옆모습에서도 모자가 보이게: 윗줄 두 칸을 주황 모자(챙은 앞쪽으로 튀어나옴)로
-  const SUIT_WALK = ME_WALK.map((f) => f.map((r, i) => (i === 0 ? '.....yyyyyy...' : i === 1 ? '..yyyyyyyyyyyy' : r)));
+  // 안경(둥근 테)도 옆에서 보이게: 눈 둘레를 어두운 테로 두르고 귀 쪽으로 다리를 뺀다
+  const SUIT_SIDE = { 0: '.....yyyyyy...', 1: '..yyyyyyyyyyyy', 4: '.hhhhhsKKKKss.', 5: '.hhhhhKKKwKss.', 6: '.hhhhhsKKKKss.', 7: '.hhhhhsscMMms.' };
+  const SUIT_WALK = ME_WALK.map((f) => f.map((r, i) => SUIT_SIDE[i] || r));
   const KINDS = {
     me: { front: ME_FRONT, blink: ME_BLINK, pal: ME_PAL, walk: ME_WALK },
     suit: { front: SUIT_FRONT, blink: SUIT_FRONT, pal: SUIT_PAL, walk: SUIT_WALK },
