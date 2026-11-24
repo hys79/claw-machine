@@ -53,6 +53,6 @@ const CFG = {
   },
   SETTINGS_BTN: { size: 40, margin: 14 }, // 화면 오른쪽 위 모서리 기준
   // 소리 기본값(0~1)과 저장 위치(게임 저장과 별개)
-  AUDIO: { SAVE_KEY: 'claw-machine-audio', BGM_FILE: 'assets/audio/background.mp3', BGM_GAIN: 0.8, BGM_DEFAULT: 0.6, SFX_DEFAULT: 0.8 },
+  AUDIO: { SAVE_KEY: 'claw-machine-audio', BGM_FILE: 'assets/audio/background.mp3', BGM_GAIN: 0.8, BGM_DEFAULT: 0.3, SFX_DEFAULT: 0.8 },
   TYPE_SPEED: 32, // 프롤로그 글자 출력 속도(글자/초)
 };
