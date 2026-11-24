@@ -2,12 +2,12 @@
 const State = {
   data: null,
   fresh() {
-    return { season: 1, week: 1, shards: 0, stats: { ...CFG.START_STATS } };
+    return { playerName: '', money: CFG.START_MONEY, rank: CFG.START_RANK, day: 1 };
   },
   load() {
     try {
       const raw = localStorage.getItem(CFG.SAVE_KEY);
-      this.data = raw ? JSON.parse(raw) : this.fresh();
+      this.data = raw ? Object.assign(this.fresh(), JSON.parse(raw)) : this.fresh();
     } catch (e) {
       this.data = this.fresh();
     }
@@ -16,7 +16,10 @@ const State = {
     try { localStorage.setItem(CFG.SAVE_KEY, JSON.stringify(this.data)); } catch (e) {}
   },
   wipe() {
-    localStorage.removeItem(CFG.SAVE_KEY);
+    try { localStorage.removeItem(CFG.SAVE_KEY); } catch (e) {}
     this.data = this.fresh();
+  },
+  hasSave() {
+    return !!this.data.playerName;
   },
 };

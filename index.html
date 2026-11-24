@@ -3,16 +3,32 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
-<title>박근령, 증바람 프로게이머가 되다!</title>
+<title>인형뽑기 고수인 내가 최고 랭크 사장이 되어보려고 합니다</title>
 <style>
-  html, body { margin: 0; height: 100%; background: #12303a; }
-  body { display: flex; align-items: center; justify-content: center; }
-  canvas { width: 100%; max-width: 960px; image-rendering: pixelated; touch-action: manipulation; }
+  @font-face {
+    font-family: 'Game';
+    src: url('assets/fonts/game.woff2') format('woff2');
+    font-display: block;
+  }
+  html, body { margin: 0; height: 100%; background: #1a1c2c; }
+  body { display: flex; align-items: center; justify-content: center; font-family: 'Game', sans-serif; }
+  #wrap { position: relative; width: 100%; max-width: 960px; }
+  canvas { display: block; width: 100%; image-rendering: pixelated; touch-action: manipulation; }
+  #nameInput {
+    display: none; position: absolute; left: 25%; top: 41%; width: 50%; height: 11%;
+    box-sizing: border-box; padding: 0 12px; text-align: center;
+    font-family: 'Game', sans-serif; color: #fff1e8; background: #333c57;
+    border: 4px solid #ffec27; border-radius: 0; outline: none;
+  }
 </style>
 </head>
 <body>
-<canvas id="game" width="960" height="576"></canvas>
+<div id="wrap">
+  <canvas id="game" width="960" height="576"></canvas>
+  <input id="nameInput" type="text" maxlength="8" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="이름 입력">
+</div>
 <script src="js/config.js"></script>
+<script src="js/data.js"></script>
 <script src="js/state.js"></script>
 <script src="js/main.js"></script>
 </body>
