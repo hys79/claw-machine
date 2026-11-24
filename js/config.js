@@ -27,8 +27,6 @@ const CFG = {
     alertLight: '#ef7a8f',
     alertDark: '#a52c43',
     yellow: '#ffd84a',  // 돈·강조(타이틀 둘째 줄, 코인)
-    glass: 'rgba(20,50,77,0.82)',        // HUD 알약·반투명 상자
-    glassLine: 'rgba(255,255,255,0.35)',
     scrim: 'rgba(10,30,50,0.62)',        // 팝업 뒤 어두운 막
     shadow: 'rgba(10,30,50,0.35)',       // 딱딱한 오프셋 그림자
   },
@@ -49,8 +47,10 @@ const CFG = {
     cutDialog: { x: 40, y: 436, w: 880, h: 118 }, // 컷신 대사창(그림을 덜 가리게 낮고 납작하게)
     namePanel: { x: 200, y: 84, w: 560, h: 372 }, // 가게 신청서(이름 입력)
     helpPanel: { x: 160, y: 88, w: 640, h: 420 },
-    settingsPanel: { x: 240, y: 104, w: 480, h: 322 },
+    settingsPanel: { x: 240, y: 70, w: 480, h: 440 },
   },
   SETTINGS_BTN: { size: 56, margin: 16 }, // 화면 오른쪽 위 모서리 기준
+  // 소리 기본값(0~1)과 저장 위치(게임 저장과 별개)
+  AUDIO: { SAVE_KEY: 'claw-machine-audio', BGM_DEFAULT: 0.6, SFX_DEFAULT: 0.8 },
   TYPE_SPEED: 32, // 프롤로그 글자 출력 속도(글자/초)
 };

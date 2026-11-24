@@ -10,19 +10,19 @@ const DATA = {
   // 프롤로그 컷신 대본(대사 위주). {name}=플레이어 이름, {shop}=가게 이름, {이:shop}처럼 쓰면 그 이름의 받침에 맞는 조사(이/가, 은/는, 을/를)만 붙는다.
   // bg: arcade(오락실 안) | phone(핸드폰 뉴스) | site(공사 중인 아레나) | arena(완공된 아레나) | street(우리 가게가 있는 거리), light: 화면 색 입힘, crowd: 광장 구경꾼 수, walkers: 거리 행인 수
   // actors: 등장 인물(x, y는 발 위치, 도트 좌표 0~240, size:'mini'는 멀리서 본 작은 모습). 단계: say(태그, 글), wait(초), move(id, x, 속도, true=끝날 때까지 대기),
-  //         emote(id, !/bulb), pose(id, front/back), shake(세기), ask(태그, 글) = 대사 뒤에 가게 이름 입력, title(큰 글, 작은 글)
+  //         emote(id, !/bulb), pose(id, front/back), sfx(효과음 이름), shake(세기), ask(태그, 글) = 대사 뒤에 가게 이름 입력, title(큰 글, 작은 글)
   STORY: [
     { bg: 'arcade', actors: [{ id: 'me', x: 133, y: 106, pose: 'back' }], steps: [
       ['wait', 0.5],
       ['say', '{name}', '좋았어… 조금만 더. 오른쪽, 오른쪽!'],
-      ['shake', 3], ['emote', 'me', '!'], ['wait', 0.9],
+      ['shake', 3], ['sfx', 'prize'], ['emote', 'me', '!'], ['wait', 0.9],
       ['say', '{name}', '잡았다! 역시 나라니까~'],
       ['say', '{name}', '이 정도면 인형뽑기 고수라고 불러도 되겠지?'],
-      ['shake', 2], ['pose', 'me', 'front'], ['emote', 'me', '!'], ['wait', 0.7],
+      ['shake', 2], ['sfx', 'buzz'], ['pose', 'me', 'front'], ['emote', 'me', '!'], ['wait', 0.7],
       ['say', '{name}', '응? 핸드폰 알림이네. 무슨 뉴스지?'],
     ] },
     { bg: 'phone', actors: [], steps: [
-      ['wait', 0.5],
+      ['sfx', 'notif'], ['wait', 0.5],
       ['say', '뉴스 앵커', "속보입니다. 서울 창동에 대형 공연장 '창동 아레나'가 새롭게 들어선다는 소식입니다."],
       ['say', '뉴스 앵커', '공연이 열리는 날이면 국내외 관객이 수만 명씩 몰릴 것으로 예상됩니다.'],
       ['say', '뉴스 앵커', '공연장 주변에는 새로운 상권도 함께 조성될 전망입니다.'],
@@ -41,6 +41,7 @@ const DATA = {
       ['say', '{name}', '좋아, 결정했어. 내가 직접 인형뽑기 가게를 차려 보는 거야!'],
     ] },
     { bg: 'street', walkers: 4, actors: [{ id: 'me', x: 104, y: 106 }], steps: [
+      ['sfx', 'doorbell'],
       ['say', '{name}', '가게 자리는 여기로 하고… 이제 간판이 문제네.'],
       ['ask', '{name}', '인형뽑기 가게 이름은 뭘로 짓지…?'],
       ['emote', 'me', 'bulb'],
@@ -125,4 +126,31 @@ DATA.GEAR = (function () {
     rows.push(row);
   }
   return rows;
+})();
+
+// 스피커 아이콘(14x12, 'k' 한 색). 켜짐: 소리 물결 두 줄 / 음소거: X 표시
+DATA.ICON_SPEAKER = (function () {
+  const make = (muted) => {
+    const rows = [];
+    for (let y = 0; y < 12; y++) {
+      let row = '';
+      for (let x = 0; x < 14; x++) {
+        const dy = y - 5.5;
+        let on = false;
+        if (x <= 2 && y >= 4 && y <= 7) on = true;                                   // 본체
+        if (x >= 3 && x <= 5 && Math.abs(dy) <= 2 + (x - 3) * 1.5) on = true;        // 나팔
+        if (!muted) {
+          const d = Math.hypot(x - 5, dy);
+          if (x >= 8 && ((d >= 4.1 && d <= 5.1) || (d >= 7.0 && d <= 8.0))) on = true; // 물결 두 줄
+        } else {
+          const ux = x - 10.5;
+          if (Math.abs(ux) <= 3 && Math.abs(Math.abs(dy) - Math.abs(ux)) <= 0.55) on = true; // X
+        }
+        row += on ? 'k' : '.';
+      }
+      rows.push(row);
+    }
+    return rows;
+  };
+  return { on: make(false), off: make(true) };
 })();

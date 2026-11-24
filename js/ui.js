@@ -29,13 +29,22 @@ const UI = (function () {
     }
     return null;
   }
+  let dragging = null; // 누르고 끄는 중인 슬라이더
+  const fracOf = (h, p) => Math.max(0, Math.min(1, (p.x - h.tx) / h.tw));
   // 누른 곳에 버튼이 있으면 실행하고 true. 비활성 버튼은 눌러도 반응 없음(true는 돌려줌: 아래 화면으로 안 새게).
   function click(p) {
     const h = hitAt(p);
     if (!h) return false;
-    if (!h.disabled && h.onClick) h.onClick();
+    if (h.disabled) return true;
+    if (h.drag) { dragging = h; h.drag(fracOf(h, p)); return true; }
+    if (h.onClick) {
+      if (h.sfx !== 'none' && typeof Sound !== 'undefined') Sound.sfx(h.sfx || 'click');
+      h.onClick();
+    }
     return true;
   }
+  function move(p) { if (dragging) dragging.drag(fracOf(dragging, p)); return !!dragging; }
+  function release() { if (dragging) { const d = dragging; dragging = null; if (d.end) d.end(); } }
 
   // ---------- 글자 ----------
   // outline을 주면 어두운 면·그림 위에서도 읽히는 테두리 글자. 밝은 면 위에서는 outline 없이 쓴다.
@@ -89,12 +98,11 @@ const UI = (function () {
     framed(b, fill || C.white, bw);
   }
 
-  // HUD용 반투명 어두운 상자
-  function glass(b) {
-    rect(b.x, b.y, b.w, b.h, C.glass);
-    ctx.strokeStyle = C.glassLine;
-    ctx.lineWidth = 2;
-    ctx.strokeRect(b.x + 1, b.y + 1, b.w - 2, b.h - 2);
+  // 작은 정보 상자(HUD 알약 등): 흰 면 + 얇은 테두리 + 오프셋 그림자. 상자는 항상 흰색 테마.
+  function chip(b) {
+    const bw = BW.small;
+    rect(b.x - bw + 2, b.y - bw + 3, b.w + bw * 2, b.h + bw * 2, C.shadow);
+    framed(b, C.white, bw);
   }
 
   function scrim(w, h) { rect(0, 0, w, h, C.scrim); }
@@ -109,7 +117,7 @@ const UI = (function () {
     danger: { fill: C.alert, hi: C.alertHi, text: C.white, border: C.ink, top: C.alertLight, shade: C.alertDark },
   };
 
-  // b: 안쪽 영역. o: {style, size, onClick, modal, disabled, bare(상자 없이 draw만), draw(x,y,w,h,hover)}
+  // b: 안쪽 영역. o: {style, size, onClick, sfx(효과음 이름, 'none'이면 무음), modal, disabled, bare(상자 없이 draw만), draw(x,y,w,h,hover)}
   function button(b, label, o) {
     o = o || {};
     const st = STYLE[o.disabled ? 'soft' : (o.style || 'primary')];
@@ -117,7 +125,7 @@ const UI = (function () {
     const tf = ctx.getTransform();
     const abs = { x: b.x - bw + tf.e / tf.a, y: b.y - bw + tf.f / tf.d, w: b.w + bw * 2, h: b.h + bw * 2 };
     const live = !modalOpen || o.modal;
-    if (live) next.push(Object.assign(abs, { onClick: o.onClick, disabled: o.disabled }));
+    if (live) next.push(Object.assign(abs, { onClick: o.onClick, disabled: o.disabled, sfx: o.sfx }));
     const hover = live && !o.disabled && mouse.on &&
       mouse.x >= abs.x && mouse.x <= abs.x + abs.w && mouse.y >= abs.y && mouse.y <= abs.y + abs.h;
     const y = b.y - (hover ? 1 : 0);
@@ -140,23 +148,63 @@ const UI = (function () {
     if (sub) text(sub, cx, y + 52, 15, C.sub);
   }
 
+  // 도트 그림은 작은 이미지로 한 번 만든 뒤 확대해서 그린다(칸마다 칠하면 소수 배율에서 틈이 보인다).
+  const imgCache = new WeakMap();
+  function pixImg(rows, pal) {
+    const key = typeof pal === 'string' ? pal : 'pal';
+    let m = imgCache.get(rows);
+    if (!m) { m = new Map(); imgCache.set(rows, m); }
+    let img = m.get(key);
+    if (img) return img;
+    img = document.createElement('canvas');
+    img.width = rows[0].length; img.height = rows.length;
+    const g = img.getContext('2d');
+    rows.forEach((row, j) => {
+      for (let i = 0; i < row.length; i++) {
+        if (row[i] === '.') continue;
+        const c = typeof pal === 'string' ? pal : pal[row[i]];
+        if (!c) continue;
+        g.fillStyle = c;
+        g.fillRect(i, j, 1, 1);
+      }
+    });
+    m.set(key, img);
+    return img;
+  }
+  // pal: 글자->색 표, 또는 한 가지 색(문자열). 크기는 s배.
+  function sprite(rows, pal, x, y, s) {
+    const img = pixImg(rows, pal);
+    ctx.drawImage(img, x, y, img.width * s, img.height * s);
+  }
+
   // 8각 코인(8x8 도트)
   const COIN = ['..kkkk..', '.kyyyyk.', 'kyhyyyyk', 'kyhyyyyk', 'kyyyyyyk', 'kyyyyyyk', '.kyyyyk.', '..kkkk..'];
   const COIN_PAL = { k: '#b8801f', y: '#f2c14e', h: '#fff1b8' };
-  function coin(x, y, s) {
-    COIN.forEach((row, j) => {
-      for (let i = 0; i < row.length; i++) {
-        const c = COIN_PAL[row[i]];
-        if (c) rect(x + i * s, y + j * s, s, s, c);
-      }
-    });
+  function coin(x, y, s) { sprite(COIN, COIN_PAL, x, y, s); }
+
+  // 소지금 알약(왼쪽 위 공통): 흰 상자
+  function moneyPill(b, amount) {
+    chip(b);
+    coin(b.x + 10, b.y + (b.h - 24) / 2, 3);
+    text(amount, b.x + b.w - 12, b.y + b.h / 2, 18, C.ink, 'right');
   }
 
-  // 소지금 알약(왼쪽 위 공통)
-  function moneyPill(b, amount) {
-    glass(b);
-    coin(b.x + 10, b.y + (b.h - 24) / 2, 3);
-    text(amount, b.x + b.w - 12, b.y + b.h / 2, 18, C.white, 'right');
+  // 슬라이더: 트랙(파란 채움) + 흰 손잡이. value 0~1. o: {onChange, onEnd, modal, disabled, dim(음소거처럼 흐리게)}
+  function slider(b, value, o) {
+    o = o || {};
+    const tf = ctx.getTransform();
+    const live = !modalOpen || o.modal;
+    const kw = 16, tx = b.x + kw / 2, tw = b.w - kw; // 손잡이가 트랙 끝에서도 안 잘리게
+    if (live) next.push({ x: b.x + tf.e / tf.a, y: b.y + tf.f / tf.d, w: b.w, h: b.h, tx: tx + tf.e / tf.a, tw, drag: o.onChange, end: o.onEnd, disabled: o.disabled });
+    const cy = b.y + b.h / 2, th = 10;
+    framed({ x: b.x, y: cy - th / 2, w: b.w, h: th }, C.soft, 2);
+    const fx = Math.round(tx + tw * value);
+    if (fx > b.x) rect(b.x, cy - th / 2, fx - b.x, th, (o.dim || o.disabled) ? C.edge : C.blue);
+    const k = { x: fx - kw / 2, y: cy - 13, w: kw, h: 26 };
+    rect(k.x - 2 + 2, k.y - 2 + 3, k.w + 4, k.h + 4, C.shadow);
+    framed(k, C.white, 2);
+    rect(k.x, k.y + k.h - 4, k.w, 4, C.line);
+    rect(k.x + 6, k.y + 7, 2, 12, (o.dim || o.disabled) ? C.edge : C.blue);
   }
 
   // 대사창: 흰 창 + 위에 걸친 이름표 + 끝에 깜빡이는 ▼
@@ -171,5 +219,5 @@ const UI = (function () {
     if (ready && Math.floor(t * 2) % 2 === 0) text('▼', b.x + b.w - 30, b.y + b.h - 28, 22, C.blue, 'right');
   }
 
-  return { begin, end, setMouse, click, text, wrap, rect, framed, panel, glass, scrim, hline, button, title, coin, moneyPill, dialog, font };
+  return { begin, end, setMouse, click, move, release, text, wrap, rect, framed, panel, chip, scrim, hline, button, slider, title, sprite, coin, moneyPill, dialog, font };
 })();

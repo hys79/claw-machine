@@ -122,6 +122,9 @@
     confirmWipe = false;
     nameError = '';
     showInput(next === 'name', { x: 240, y: 236, w: 480, h: 64 }, CFG.NAME_MAX, '이름 입력');
+    if (next !== 'intro') Sound.ambient(null);
+    if (next === 'title' || next === 'name') Sound.bgm('title');
+    else if (next === 'shop') Sound.bgm('shop');
     if (next === 'intro') Cutscene.start(now, () => { State.save(); go('shop'); }, cutHooks); // 프롤로그 컷신
   }
 
@@ -131,6 +134,7 @@
     if (!name) { nameError = '이름을 적어 줘!'; return; }
     State.data = State.fresh();
     State.data.playerName = name.slice(0, CFG.NAME_MAX);
+    Sound.sfx('confirm');
     go('intro');
   }
 
@@ -146,6 +150,7 @@
   function onPress(e) {
     if (e.target === input) return;
     e.preventDefault();
+    Sound.unlock(); // 첫 입력에서 소리를 켠다
     const p = pointer(e);
     UI.setMouse({ x: p.x, y: p.y, on: !e.touches }); // 터치는 호버 없음
     if (UI.click(p)) return;
@@ -154,6 +159,11 @@
   cv.addEventListener('mousedown', onPress);
   cv.addEventListener('touchstart', onPress, { passive: false });
   cv.addEventListener('mousemove', (e) => { const p = pointer(e); UI.setMouse({ x: p.x, y: p.y, on: true }); });
+  window.addEventListener('mousemove', (e) => { UI.move(pointer(e)); });                       // 슬라이더 드래그(캔버스 밖으로 나가도 계속)
+  cv.addEventListener('touchmove', (e) => { e.preventDefault(); UI.move(pointer(e)); }, { passive: false });
+  window.addEventListener('mouseup', () => UI.release());
+  window.addEventListener('touchend', () => UI.release());
+  window.addEventListener('touchcancel', () => UI.release());
   cv.addEventListener('mouseleave', () => UI.setMouse({ x: -1, y: -1, on: false }));
   input.addEventListener('input', () => { nameError = ''; });
   input.addEventListener('keydown', (e) => {
@@ -164,7 +174,9 @@
 
   // Esc: 팝업 닫기 → 이전 화면 → (타이틀에서는) 설정 열기
   window.addEventListener('keydown', (e) => {
+    Sound.unlock();
     if (e.key === 'Escape') {
+      Sound.sfx('back');
       if (modal) closeModal();
       else if (screen === 'title') modal = 'settings';
       else go('title');
@@ -257,6 +269,26 @@
     backButton('타이틀로');
   }
 
+  // 소리 설정 한 줄: [스피커(음소거) 아이콘 버튼] 이름 / 슬라이더 / 퍼센트
+  function soundRow(sp, cy, label, key) {
+    const snd = Sound.get();
+    const muted = snd[key + 'Mute'], vol = snd[key];
+    UI.button({ x: sp.x + 30, y: cy - 26, w: 52, h: 52 }, '', {
+      style: 'secondary', modal: true, sfx: 'none',
+      onClick: () => { if (key === 'bgm') Sound.toggleBgmMute(); else Sound.toggleSfxMute(); },
+      draw(x, y, w, h) {
+        UI.sprite(muted ? DATA.ICON_SPEAKER.off : DATA.ICON_SPEAKER.on, muted ? C.alert : C.ink, x + (w - 42) / 2, y + (h - 36) / 2, 3);
+      },
+    });
+    UI.text(label, sp.x + 104, cy - 18, 18, muted ? C.sub : C.ink, 'left');
+    UI.slider({ x: sp.x + 104, y: cy - 2, w: sp.w - 104 - 100, h: 28 }, vol, {
+      modal: true, dim: muted,
+      onChange: (v) => { if (key === 'bgm') Sound.setBgm(v); else Sound.setSfx(v); },
+      onEnd: () => Sound.sfx('click'),
+    });
+    UI.text(muted ? '음소거' : Math.round(vol * 100) + '%', sp.x + sp.w - 30, cy + 12, 18, muted ? C.alert : C.ink, 'right');
+  }
+
   function drawModal() {
     UI.scrim(W, H);
     ctx.save();
@@ -279,8 +311,11 @@
       UI.panel(sp, C.white);
       UI.text('설정', 480, sp.y + 40, 30, C.ink);
       UI.hline(sp.x + 30, sp.y + 66, sp.w - 60);
+      soundRow(sp, sp.y + 118, '배경음악', 'bgm');
+      soundRow(sp, sp.y + 190, '효과음', 'sfx');
+      UI.hline(sp.x + 30, sp.y + 226, sp.w - 60);
       if (State.hasSave()) {
-        UI.button({ x: 300, y: sp.y + 92, w: 360, h: 52 }, confirmWipe ? '정말 지울까요? 한 번 더' : '처음부터 다시', {
+        UI.button({ x: 300, y: sp.y + 246, w: 360, h: 52 }, confirmWipe ? '정말 지울까요? 한 번 더' : '처음부터 다시', {
           style: confirmWipe ? 'danger' : 'secondary',
           modal: true,
           onClick: () => {
@@ -288,9 +323,9 @@
           },
         });
       } else {
-        UI.text('저장된 데이터가 없어요', 480, sp.y + 118, 20, C.sub);
+        UI.text('저장된 데이터가 없어요', 480, sp.y + 272, 20, C.sub);
       }
-      UI.text(DATA.CREDIT_LINE, 480, sp.y + 190, 16, C.sub);
+      UI.text(DATA.CREDIT_LINE, 480, sp.y + 328, 16, C.sub);
       UI.button({ x: 360, y: sp.y + sp.h - 76, w: 240, h: 52 }, '닫기', { style: 'primary', modal: true, onClick: closeModal });
     }
     ctx.restore();
@@ -317,6 +352,7 @@
   }
 
   resize();
+  Sound.bgm('title'); // 첫 클릭/키 입력 뒤부터 들린다
 
   // 폰트가 로드된 뒤 시작(실패해도 1.5초 후 시작)
   let started = false;

@@ -524,6 +524,9 @@ const Cutscene = (function () {
     nextScene(now);
   }
 
+  const BGM_OF = { arcade: 'arcade', phone: 'news', site: 'site', arena: 'story', street: 'happy' };
+  const AMBIENT_OF = { arcade: 'arcade', site: 'site', arena: 'crowd', street: 'street' };
+
   function nextScene(now) {
     st.si++;
     if (st.si >= DATA.STORY.length) { finish(); return; }
@@ -534,6 +537,9 @@ const Cutscene = (function () {
     st.walkers = makeWalkers(sc.walkers || 0);
     st.emotes = []; st.say = null; st.block = null; st.title = null; st.i = 0;
     st.phase = 'in'; st.pt = now;
+    Sound.bgm(BGM_OF[st.bg]);      // 장면에 맞는 배경음악과 주변 소리
+    Sound.ambient(AMBIENT_OF[st.bg]);
+    if (st.si > 0) Sound.sfx('whoosh');
   }
 
   const actor = (id) => st.actors.find((a) => a.id === id);
@@ -552,13 +558,14 @@ const Cutscene = (function () {
         return;
       }
       if (op === 'wait') { st.wait = now + s[1]; st.block = 'wait'; return; }
-      if (op === 'title') { st.title = { main: fmt(s[1]), sub: fmt(s[2] || ''), t0: now }; st.block = 'title'; return; }
+      if (op === 'title') { st.title = { main: fmt(s[1]), sub: fmt(s[2] || ''), t0: now }; st.block = 'title'; Sound.sfx('fanfare'); return; }
       if (op === 'move') {
         const a = actor(s[1]);
         if (a) a.mv = { to: s[2], spd: s[3] || 30 };
         if (s[4] === true) { st.block = 'move'; return; }
       } else if (op === 'pose') { const a = actor(s[1]); if (a) a.pose = s[2]; }
-      else if (op === 'emote') st.emotes.push({ id: s[1], ch: s[2], t0: now });
+      else if (op === 'emote') { st.emotes.push({ id: s[1], ch: s[2], t0: now }); Sound.sfx(s[2] === 'bulb' ? 'ding' : 'pop'); }
+      else if (op === 'sfx') Sound.sfx(s[1]);
       else if (op === 'flash') st.flash = 1;
       else if (op === 'shake') st.shake = s[1];
       st.i++;
@@ -577,6 +584,7 @@ const Cutscene = (function () {
     if (!name) { st.inputErr = '가게 이름을 적어 줘!'; return; }
     State.data.shopName = name.slice(0, CFG.SHOP_NAME_MAX);
     if (st.hooks.input) st.hooks.input(false);
+    Sound.sfx('sparkle'); // 간판에 이름이 켜진다
     endBlock(now);
   }
 
@@ -598,6 +606,7 @@ const Cutscene = (function () {
   function finish() {
     if (!st) return;
     if (st.hooks.input) st.hooks.input(false);
+    Sound.ambient(null);
     const d = st.done; st = null; if (d) d();
   }
 
@@ -608,6 +617,7 @@ const Cutscene = (function () {
     st.last = now;
     st.flash = Math.max(0, st.flash - dt * 2.5);
     st.shake = Math.max(0, st.shake - dt * 8);
+    if (st.actors.some((a) => a.mv) && now - (st.lastStep || 0) > 0.28) { st.lastStep = now; Sound.sfx('step'); } // 발소리
     st.actors.forEach((a) => {
       if (!a.mv) return;
       const d = a.mv.to - a.x, stepLen = a.mv.spd * dt;
@@ -627,6 +637,7 @@ const Cutscene = (function () {
     if (!st || st.phase !== 'run') return;
     if (st.block === 'say') {
       if ((now - st.say.t0) * CFG.TYPE_SPEED < st.say.text.length) { st.say.t0 = now - 999; return; }
+      Sound.sfx('next');
       endBlock(now);
     } else if (st.block === 'title' && now - st.title.t0 > 0.5) endBlock(now);
   }
@@ -701,6 +712,7 @@ const Cutscene = (function () {
       const L = st.block === 'input' ? ASK_DIALOG : CFG.LAYOUT.cutDialog;
       const full = st.say.text;
       const chars = Math.floor((now - st.say.t0) * CFG.TYPE_SPEED);
+      if (chars > (st.say.ticked || 0) && chars < full.length) { if (chars % 2 === 0) Sound.sfx('type'); st.say.ticked = chars; } // 글자 나오는 소리
       let left = chars;
       const lines = UI.wrap(full, L.w - 60, 26).map((s) => { const part = s.slice(0, Math.max(0, left)); left -= s.length; return part; });
       UI.dialog(L, st.say.tag, lines, chars >= full.length && st.block !== 'input', now);
