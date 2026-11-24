@@ -11,7 +11,7 @@ const DATA = {
   // 프롤로그 컷신 대본(대사 위주). {name}=플레이어 이름, {shop}=가게 이름, {이:shop}처럼 쓰면 그 이름의 받침에 맞는 조사(이/가, 은/는, 을/를)만 붙는다.
   // bg: arcade(오락실 안) | phone(핸드폰 뉴스) | site(공사 중인 아레나) | arena(완공된 아레나) | street(우리 가게가 있는 거리), light: 화면 색 입힘, crowd: 광장 구경꾼 수, walkers: 거리 행인 수
   // actors: 등장 인물(x, y는 발 위치, 도트 좌표 0~240, size:'mini'는 멀리서 본 작은 모습). 단계: say(태그, 글), wait(초), move(id, x, 속도, true=끝날 때까지 대기),
-  //         emote(id, !/bulb), pose(id, front/back), sfx(효과음 이름), shake(세기), ask(태그, 글) = 대사 뒤에 가게 이름 입력, title(큰 글, 작은 글)
+  //         emote(id, !/bulb), pose(id, front/back/sideR/sideL), sfx(효과음 이름), shake(세기), ask(태그, 글) = 대사 뒤에 가게 이름 입력, title(큰 글, 작은 글)
   STORY: [
     { bg: 'arcade', actors: [{ id: 'me', x: 133, y: 106, pose: 'back' }], steps: [
       ['wait', 0.5],
@@ -54,8 +54,8 @@ const DATA = {
     { bg: 'street', walkers: 3, actors: [{ id: 'me', x: 100, y: 106 }, { id: 'suit', kind: 'suit', x: 420, y: 106 }], steps: [
       ['wait', 0.4],
       ['say', '{name}', '좋아, 오늘이 개업 첫날이다! 간판도 달았고, 기계도 채웠고…'],
-      ['move', 'suit', 156, 32, true],
-      ['emote', 'me', '!'], ['wait', 0.5],
+      ['move', 'suit', 126, 32, true],
+      ['pose', 'me', 'sideR'], ['emote', 'me', '!'], ['wait', 0.5],
       ['say', '???', '허허, 거기 젊은 사장님. 잠깐 시간 괜찮으신가?'],
       ['say', '{name}', '(…양복 색깔이 왜 저러지?) 네? 저, 저요?'],
       ['say', '???', '실례했네. 나는 인형뽑기 애호가 클럽 회장이라고 하네.'],

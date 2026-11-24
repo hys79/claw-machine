@@ -683,9 +683,11 @@ const Cutscene = (function () {
         const kind = KINDS[a.kind || 'me'];
         let rows = mini ? ME_MINI : (a.pose === 'back' ? ME_BACK : (blink ? kind.blink : kind.front));
         if (walking) rows = mini ? ME_MINI_WALK[Math.floor(t * 6) % 2] : kind.walk[Math.floor(t * 6) % 4];
+        const side = !walking && !mini && (a.pose === 'sideR' || a.pose === 'sideL'); // 멈춰 서서 옆을 바라보는 자세
+        if (side) rows = kind.walk[1];
         const img = outlinedImg(rows, kind.pal);
         rect(pg, Math.round(a.x) - (mini ? 4 : 7), a.y - 1, mini ? 8 : 14, 2, 'rgba(20,50,77,0.22)'); // 발밑 그림자
-        drawFacing(pg, img, Math.round(a.x), a.y - img.height + 1 - (walking && !mini ? hop : 0), walking && a.faceLeft);
+        drawFacing(pg, img, Math.round(a.x), a.y - img.height + 1 - (walking && !mini ? hop : 0), walking ? a.faceLeft : a.pose === 'sideL');
       } })));
     list.sort((a, b) => a.y - b.y).forEach((o) => o.f());
     st.emotes = st.emotes.filter((e) => now - e.t0 < 1.6);
