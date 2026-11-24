@@ -174,10 +174,50 @@ const Cutscene = (function () {
     '.pp..pp.',
     '.dd..dd.',
   ];
+  // 옆모습(오른쪽을 보고 걷는다. 왼쪽은 좌우 반전). 몸통 + 팔 + 다리를 조합해 걷기 4프레임을 만든다.
+  const SIDE_BASE = [
+    '....hhhhhh....',
+    '..hhhhhhhhhh..',
+    '.hhhHHhhhhhhh.',
+    '.hhhhhhhhhhhh.',
+    '.hhhhhsssssss.',
+    '.hhhhhssKwsss.',
+    '.hhhhhssKKsss.',
+    '.hhhhhsccssms.',
+    '..hhhhssssss..',
+    '....hsssss....',
+    '....bbbbbbb...',
+    '....bbbbbyb...',
+    '....bbbbbyb...',
+    '....bBBBBbb...',
+    '....bbbbbbb...',
+    '....bbbbbbb...',
+    '....BBBBBBB...',
+  ];
+  const SIDE_LEGS = {
+    wide: ['....pppppp....', '...ppp..ppp...', '..ppp....ppp..', '.dddd....dddd.'],
+    pass: ['....pppppp....', '....pppppp....', '....ppp.pp....', '....ddd.dd....'],
+  };
+  const SIDE_ARMS = { // [x, y, 글자]: 팔(밝은 소매 t, 손 s)
+    fwd: [[8, 12, 'B'], [9, 12, 'B'], [9, 13, 'B'], [10, 13, 'B'], [10, 14, 'B'], [11, 14, 's'], [11, 15, 's']],
+    back: [[5, 12, 'B'], [6, 12, 'B'], [4, 13, 'B'], [5, 13, 'B'], [3, 14, 'B'], [3, 15, 's'], [2, 15, 's']],
+    down: [[7, 12, 'B'], [7, 13, 'B'], [7, 14, 'B'], [7, 15, 's'], [8, 15, 's']],
+  };
+  function sideFrame(arm, legs) {
+    const rows = SIDE_BASE.concat(SIDE_LEGS[legs]).map((r) => r.split(''));
+    SIDE_ARMS[arm].forEach((c) => { rows[c[1]][c[0]] = c[2]; });
+    return rows.map((r) => r.join(''));
+  }
+  const ME_WALK = [sideFrame('fwd', 'wide'), sideFrame('down', 'pass'), sideFrame('back', 'wide'), sideFrame('down', 'pass')];
+  // 멀리서 본 주인공의 옆모습(2프레임)
+  const ME_MINI_WALK = [
+    ['..hhhh..', '.hhhhhh.', '.hhhsss.', '.hhhsKs.', '..hhsss.', '...sss..', '..bbbb..', '..bbbs..', '..bbbb..', '.pp..pp.', '.dd..dd.'],
+    ['..hhhh..', '.hhhhhh.', '.hhhsss.', '.hhhsKs.', '..hhsss.', '...sss..', '..bbbb..', '.sbbbb..', '..bbbb..', '..pppp..', '..dddd..'],
+  ];
   // 눈 깜빡임(정면): 눈 두 줄을 한 줄 선으로
   const ME_BLINK = ME_FRONT.map((r, i) => (i === 5 ? '.hssssssssssh.' : r));
   const ME_PAL = { h: '#4a3426', H: '#7a5640', s: '#ffd9b5', c: '#ff9fa0', m: '#c0584a', K: '#14324d', w: '#ffffff',
-    b: '#3f8fe0', B: '#2c6cb8', y: '#ffd84a', p: '#3b5878', d: '#14324d' };
+    b: '#3f8fe0', B: '#2c6cb8', t: '#7fbdf5', y: '#ffd84a', p: '#3b5878', d: '#14324d' };
 
   // 도트를 한 번만 이미지로 만들고, 바깥에 ink 테두리 1칸을 자동으로 두른다(스티커 같은 모양).
   const spriteImgs = new Map();
@@ -202,6 +242,39 @@ const Cutscene = (function () {
     }
     byPal.set(pal, img);
     return img;
+  }
+
+  // 가운데 x에 맞춰 그린다. flip이면 좌우 반전(왼쪽을 보고 걷는 모습).
+  function drawFacing(g, img, cx, y, flip) {
+    if (!flip) { g.drawImage(img, Math.round(cx - img.width / 2), y); return; }
+    g.save();
+    g.translate(Math.round(cx + img.width / 2), 0);
+    g.scale(-1, 1);
+    g.drawImage(img, 0, y);
+    g.restore();
+  }
+
+  // 글자를 깨끗한 도트로: 도트 폰트(이 폰트는 14px 기준)를 14px로 그린 뒤 번진 가장자리를 잘라 낸다.
+  const pixTextCache = new Map();
+  function pixelText(str, color) {
+    const key = str + '|' + color;
+    if (pixTextCache.has(key)) return pixTextCache.get(key);
+    const c = document.createElement('canvas');
+    const g = c.getContext('2d');
+    g.font = '14px ' + CFG.FONT + ', sans-serif';
+    c.width = Math.ceil(g.measureText(str).width) + 2; c.height = 18;
+    g.font = '14px ' + CFG.FONT + ', sans-serif';
+    g.textBaseline = 'alphabetic'; g.fillStyle = '#000';
+    g.fillText(str, 1, 14);
+    const data = g.getImageData(0, 0, c.width, c.height);
+    const rgb = [1, 3, 5].map((i) => parseInt(color.slice(i, i + 2), 16));
+    for (let i = 0; i < data.data.length; i += 4) {
+      const on = data.data[i + 3] > 110;
+      data.data[i] = rgb[0]; data.data[i + 1] = rgb[1]; data.data[i + 2] = rgb[2]; data.data[i + 3] = on ? 255 : 0;
+    }
+    g.putImageData(data, 0, 0);
+    pixTextCache.set(key, c);
+    return c;
   }
 
   function drawRows(g, rows, pal, x, y) {
@@ -394,19 +467,16 @@ const Cutscene = (function () {
     rect(g, x0 - 3, top - 1, w + 6, GROUND - top + 1, '#14324d');
     rect(g, x0 - 2, top, w + 4, 5, '#2f80d0'); rect(g, x0 - 2, top, w + 4, 1, '#6ab0f0');
     rect(g, x0, top + 5, w, GROUND - top - 5, '#f7fbfe'); rect(g, x0 + w - 4, top + 5, 4, GROUND - top - 5, '#e1ebf3');
-    // 간판
-    g.font = '11px ' + CFG.FONT + ', sans-serif';
-    g.textBaseline = 'middle'; g.textAlign = 'center';
-    const label = name || '?';
-    const tw = Math.ceil(g.measureText(label).width);
-    const sw = Math.min(w - 8, Math.max(40, tw + 14)), sx = Math.round(x0 + w / 2 - sw / 2);
-    rect(g, sx - 1, top + 7, sw + 2, 17, '#14324d'); rect(g, sx, top + 8, sw, 15, '#2f80d0'); rect(g, sx, top + 8, sw, 2, '#6ab0f0');
-    if (!name) { rect(g, sx + 2, top + 10, sw - 4, 11, 'rgba(255,255,255,0.15)'); }
-    g.fillStyle = '#ffffff';
-    g.fillText(label, Math.round(x0 + w / 2), top + 16);
-    if (name) { for (let i = 0; i < 2; i++) { const sxp = i ? sx + sw + 4 : sx - 7; if (Math.floor(t * 2) % 2) { rect(g, sxp, top + 14, 3, 1, '#ffd84a'); rect(g, sxp + 1, top + 13, 1, 3, '#ffd84a'); } } }
+    // 간판: 이름을 짓기 전에는 빈 간판
+    const txt = name ? pixelText(name, '#ffffff') : null;
+    const sw = Math.min(w - 8, Math.max(48, (txt ? txt.width : 0) + 16)), sx = Math.round(x0 + w / 2 - sw / 2);
+    rect(g, sx - 1, top + 6, sw + 2, 20, '#14324d'); rect(g, sx, top + 7, sw, 18, '#2f80d0'); rect(g, sx, top + 7, sw, 2, '#6ab0f0');
+    if (txt) {
+      g.drawImage(txt, Math.round(x0 + w / 2 - txt.width / 2), top + 7);
+      for (let i = 0; i < 2; i++) { const sxp = i ? sx + sw + 4 : sx - 7; if (Math.floor(t * 2) % 2) { rect(g, sxp, top + 15, 3, 1, '#ffd84a'); rect(g, sxp + 1, top + 14, 1, 3, '#ffd84a'); } }
+    }
     // 차양
-    const ay = top + 26;
+    const ay = top + 27;
     for (let i = 0; i < w; i += 8) { rect(g, x0 + i, ay, 4, 8, '#2f80d0'); rect(g, x0 + i + 4, ay, 4, 8, '#ffffff'); rect(g, x0 + i + (i % 16 ? 4 : 0), ay + 8, 4, 2, i % 16 ? '#ffffff' : '#2f80d0'); }
     rect(g, x0, ay + 10, w, 1, '#c9d3de');
     // 쇼윈도(왼쪽): 기계 둘
@@ -432,11 +502,11 @@ const Cutscene = (function () {
 
   // 거리의 행인들: 주인공과 같은 모양, 머리·옷 색만 다르다(자연스러운 같은 스케일)
   const NPC_PALS = [
-    { h: '#2b1b10', H: '#4a3426', b: '#e0556f', B: '#b03a52' },
-    { h: '#d9a04a', H: '#f0c070', b: '#6bc16a', B: '#4a9a4a' },
-    { h: '#1c1c1c', H: '#3a3a3a', b: '#f2b84b', B: '#c88f20', s: '#c68642' },
-    { h: '#a3522a', H: '#c27040', b: '#a56bd8', B: '#7e4cb0' },
-    { h: '#3b2a20', H: '#5c4333', b: '#ffffff', B: '#c9d9e6', s: '#8d5524' },
+    { h: '#2b1b10', H: '#4a3426', b: '#e0556f', B: '#b03a52', t: '#f08a9c' },
+    { h: '#d9a04a', H: '#f0c070', b: '#6bc16a', B: '#4a9a4a', t: '#98d98f' },
+    { h: '#1c1c1c', H: '#3a3a3a', b: '#f2b84b', B: '#c88f20', t: '#ffd98a', s: '#c68642' },
+    { h: '#a3522a', H: '#c27040', b: '#a56bd8', B: '#7e4cb0', t: '#c79ae8' },
+    { h: '#3b2a20', H: '#5c4333', b: '#ffffff', B: '#c9d9e6', t: '#eef4fa', s: '#8d5524' },
   ].map((o) => Object.assign({}, ME_PAL, o));
   function makeWalkers(n) {
     const r = rngMaker(909);
@@ -594,18 +664,21 @@ const Cutscene = (function () {
     const list = st.crowd.map((p) => ({ y: p.y, f: () => drawPerson(pg, p, t) }))
       .concat((st.walkers || []).map((w) => ({ y: w.y, f: () => {
         const x = Math.round(-30 + ((((w.x0 + w.speed * t) % 300) + 300) % 300));
-        const img = outlinedImg(ME_FRONT, w.pal);
+        const img = outlinedImg(ME_WALK[Math.floor(t * 6 + w.x0) % 4], w.pal);
         rect(pg, x - 7, w.y - 1, 14, 2, 'rgba(20,50,77,0.22)');
-        pg.drawImage(img, x - 8, w.y - img.height + 1 - (Math.floor(t * 6 + w.x0) % 2));
+        drawFacing(pg, img, x, w.y - img.height + 1 - (Math.floor(t * 12 + w.x0) % 2), w.speed < 0);
       } })))
       .concat(st.actors.map((a) => ({ y: a.y, f: () => {
-        const hop = a.mv ? (Math.floor(t * 8) % 2) : 0;
+        const hop = a.mv ? (Math.floor(t * 12) % 2) : 0;
         const blink = (t + a.x * 0.1) % 3.2 > 3.05;
         const mini = a.size === 'mini';
-        const rows = mini ? ME_MINI : (a.pose === 'back' ? ME_BACK : (blink ? ME_BLINK : ME_FRONT));
+        const walking = !!a.mv;
+        if (walking) a.faceLeft = a.mv.to < a.x;
+        let rows = mini ? ME_MINI : (a.pose === 'back' ? ME_BACK : (blink ? ME_BLINK : ME_FRONT));
+        if (walking) rows = mini ? ME_MINI_WALK[Math.floor(t * 6) % 2] : ME_WALK[Math.floor(t * 6) % 4];
         const img = outlinedImg(rows);
         rect(pg, Math.round(a.x) - (mini ? 4 : 7), a.y - 1, mini ? 8 : 14, 2, 'rgba(20,50,77,0.22)'); // 발밑 그림자
-        pg.drawImage(img, Math.round(a.x - img.width / 2), a.y - img.height + 1 - hop);
+        drawFacing(pg, img, Math.round(a.x), a.y - img.height + 1 - (walking && !mini ? hop : 0), walking && a.faceLeft);
       } })));
     list.sort((a, b) => a.y - b.y).forEach((o) => o.f());
     st.emotes = st.emotes.filter((e) => now - e.t0 < 1.6);
