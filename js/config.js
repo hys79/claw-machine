@@ -22,10 +22,14 @@ const CFG = {
     alert: '#d9455f',
     yellow: '#ffd84a',
   },
-  // 메인 화면 배치(배경 그림 위에 겹쳐 놓는 요소)
+  // 화면 크기: 높이는 고정, 너비는 창 비율에 맞춰 늘어난다(UI는 가운데 960 영역에 배치)
+  DESIGN_W: 960,
+  MIN_W: 768,
+  MAX_W: 1440,
+  // 메인 화면 배치(가운데 960 영역 기준)
   LAYOUT: {
-    startBtn: { x: 180, y: 480, w: 290, h: 72 },
-    helpBtn: { x: 490, y: 480, w: 290, h: 72 },
-    settingsBtn: { x: 852, y: 28, w: 80, h: 80 },
+    startBtn: { x: 252, y: 490, w: 240, h: 56 },
+    helpBtn: { x: 508, y: 490, w: 200, h: 56 },
   },
+  SETTINGS_BTN: { size: 56, margin: 16 }, // 화면 오른쪽 위 모서리 기준
 };

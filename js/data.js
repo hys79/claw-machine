@@ -23,7 +23,7 @@ const DATA = {
   CREDIT_LINE: '폰트: Galmuri (SIL OFL 1.1)',
 
   // 도트 스프라이트. 팔레트 글자 → 색
-  PALETTE: { k: '#14324d', r: '#ff77a8', w: '#fff1e8', g: '#8fd3ff', y: '#ffd84a', p: '#ff9fc2' },
+  PALETTE: { k: '#14324d', r: '#ff77a8', w: '#fff1e8', g: '#8fd3ff', y: '#ffd84a', p: '#ff9fc2', a: '#ffffff', b: '#b9d6ee' },
   CLAW_MACHINE: [
     '..kkkkkkkkkkkk..',
     '.krrrrrrrrrrrrk.',
@@ -46,19 +46,6 @@ const DATA = {
     '..kk........kk..',
     '..kk........kk..',
   ],
-  GEAR: [
-    '....kkk....',
-    '..k.kkk.k..',
-    '.kkkkkkkkk.',
-    '..kkkkkkk..',
-    'kkkk...kkkk',
-    'kkkk...kkkk',
-    'kkkk...kkkk',
-    '..kkkkkkk..',
-    '.kkkkkkkkk.',
-    '..k.kkk.k..',
-    '....kkk....',
-  ],
   // 메인 화면 도트 풍경 색(js/scene.js에서 사용)
   SCENE_PAL: {
     skyTop: '#62b9ee', skyBottom: '#fbe6cc', sunGlow: '#fff3b8', sunCore: '#fffbe6',
@@ -78,3 +65,25 @@ const DATA = {
     bird: '#2d4a66',
   },
 };
+
+// 설정 톱니바퀴(15x15, 톱니 8개). 'a' 흰색, 'b' 아래쪽 그림자색
+DATA.GEAR = (function () {
+  const n = 15, c = 7, rows = [];
+  for (let y = 0; y < n; y++) {
+    let row = '';
+    for (let x = 0; x < n; x++) {
+      const dx = x - c, dy = y - c, d = Math.sqrt(dx * dx + dy * dy);
+      let on = d <= 5;
+      for (let k = 0; k < 8 && !on; k++) {
+        const a = k * Math.PI / 4, ca = Math.cos(a), sa = Math.sin(a);
+        const along = dx * ca + dy * sa, perp = Math.abs(-dx * sa + dy * ca);
+        const half = k % 2 === 0 ? 1.6 : 1.1; // 가로세로 톱니는 굵게, 대각선은 가늘게
+        if (along >= 4 && along <= 7.4 && perp <= half) on = true;
+      }
+      if (d <= 2.4) on = false;
+      row += on ? (dx + dy > 3 ? 'b' : 'a') : '.';
+    }
+    rows.push(row);
+  }
+  return rows;
+})();

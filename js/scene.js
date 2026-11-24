@@ -2,13 +2,15 @@
 // 창동 아레나를 모티브로 한 오리지널 도트 그림이다(실제 사진을 따라 그리지 않음).
 const Scene = (function () {
   const GW = 240, GH = 144, K = 4;
+  const EXT = 60;           // 좌우로 더 그리는 여분(넓은 화면용)
+  const LW = GW + EXT * 2;  // 레이어 전체 너비
   const P = DATA.SCENE_PAL;
   let g = null; // 현재 그리는 레이어의 컨텍스트
   let layers = null;
 
   function makeLayer() {
     const c = document.createElement('canvas');
-    c.width = GW; c.height = GH;
+    c.width = LW; c.height = GH;
     return c;
   }
   function rng(seed) {
@@ -50,8 +52,9 @@ const Scene = (function () {
   // ---------- 하늘 + 햇살 ----------
   function drawSky(ctx) {
     g = ctx;
-    for (let i = 0; i < 9; i++) R(0, i * 12, GW, 12, mix(P.skyTop, P.skyBottom, i / 8));
-    R(0, 108, GW, GH - 108, P.skyBottom);
+    g.translate(EXT, 0);
+    for (let i = 0; i < 9; i++) R(-EXT, i * 12, LW, 12, mix(P.skyTop, P.skyBottom, i / 8));
+    R(-EXT, 108, LW, GH - 108, P.skyBottom);
     const sx = 120, sy = 44;
     for (let k = -7; k <= 7; k++) {
       const a = (k * 12) * Math.PI / 180, w = 3.2 * Math.PI / 180;
@@ -60,7 +63,8 @@ const Scene = (function () {
         const dy = sy - y;
         const x0 = Math.round(sx + dy * Math.tan(a - w));
         const x1 = Math.round(sx + dy * Math.tan(a + w));
-        g.fillRect(Math.max(0, Math.min(x0, x1)), y, Math.max(0, Math.min(GW, Math.max(x0, x1)) - Math.max(0, Math.min(x0, x1))), 1);
+        const lo = Math.max(-EXT, Math.min(x0, x1)), hi = Math.min(GW + EXT, Math.max(x0, x1));
+        if (hi > lo) g.fillRect(lo, y, hi - lo, 1);
       }
     }
     circle(sx, sy, 20, 'rgba(255,243,184,0.45)');
@@ -78,23 +82,25 @@ const Scene = (function () {
   }
   function drawClouds(ctx) {
     g = ctx;
-    [[12, 12, 36], [96, 6, 26], [158, 16, 42], [30, 40, 30], [196, 42, 32]].forEach((c) => cloud(c[0], c[1], c[2]));
+    g.translate(EXT, 0);
+    [[12, 12, 36], [96, 6, 26], [158, 16, 42], [30, 40, 30], [196, 42, 32], [-44, 16, 34], [-20, 46, 28], [262, 10, 38], [272, 40, 30]].forEach((c) => cloud(c[0], c[1], c[2]));
   }
 
   // ---------- 앞 풍경 ----------
   function drawFront(ctx) {
     g = ctx;
+    g.translate(EXT, 0);
     const rnd = rng(20260101);
 
     // 먼 산 두 겹
-    for (let x = 0; x < GW; x++) {
+    for (let x = -EXT; x < GW + EXT; x++) {
       const t1 = Math.round(70 - (12 * Math.sin(x * 0.045 + 0.6) + 8 * Math.sin(x * 0.11 + 2) + ((x < 55 || x > 185) ? 7 : 0)));
       R(x, t1, 1, 96 - t1, P.mtnBack);
       const t2 = Math.round(82 - (7 * Math.sin(x * 0.07 + 1) + 5 * Math.sin(x * 0.16)));
       R(x, t2, 1, 96 - t2, P.mtnFront);
     }
     // 뒤쪽 아파트 단지
-    for (let x = -2; x < GW;) {
+    for (let x = -EXT - 2; x < GW + EXT;) {
       const w = 8 + Math.floor(rnd() * 5), h = 16 + Math.floor(rnd() * 18);
       const col = [P.aptA, P.aptB, P.aptC][Math.floor(rnd() * 3)];
       R(x, 96 - h, w, h, col);
@@ -106,20 +112,20 @@ const Scene = (function () {
     }
 
     // 잔디(완만한 언덕 + 점 무늬)
-    for (let x = 0; x < GW; x++) {
+    for (let x = -EXT; x < GW + EXT; x++) {
       const top = Math.round(95 + 1.6 * Math.sin(x * 0.07));
       for (let y = top; y < GH; y++) R(x, y, 1, 1, y < 112 ? P.lawnA : (y < 130 ? P.lawnB : P.lawnC));
     }
     for (let i = 0; i < 380; i++) {
-      const x = Math.floor(rnd() * GW), y = 98 + Math.floor(rnd() * 46);
+      const x = -EXT + Math.floor(rnd() * LW), y = 98 + Math.floor(rnd() * 46);
       R(x, y, 1, 1, rnd() < 0.6 ? P.lawnLight : P.lawnDark);
     }
     // 강(오른쪽)
     for (let y = 97; y < GH; y++) {
       const x0 = Math.round(192 + (y - 97) * 0.5);
-      R(x0, y, GW - x0, 1, P.river);
+      R(x0, y, GW + EXT - x0, 1, P.river);
       R(x0, y, 1, 1, P.riverEdge);
-      if (rnd() < 0.5) R(x0 + 3 + Math.floor(rnd() * (GW - x0 - 4)), y, 2, 1, '#d5f0fc');
+      if (rnd() < 0.5) R(x0 + 3 + Math.floor(rnd() * (GW + EXT - x0 - 4)), y, 2, 1, '#d5f0fc');
     }
 
     // 왼쪽 부속 건물 + LED 화면 + 작은 유리 돔
@@ -177,7 +183,7 @@ const Scene = (function () {
     }
 
     // 나무들
-    [[14, 106, 7], [32, 114, 6], [58, 104, 6], [78, 110, 4], [172, 108, 5], [194, 104, 7], [214, 100, 6], [228, 112, 8]].forEach((t) => {
+    [[-46, 108, 7], [-24, 102, 6], [-8, 116, 5], [14, 106, 7], [32, 114, 6], [58, 104, 6], [78, 110, 4], [172, 108, 5], [194, 104, 7], [214, 100, 6], [228, 112, 8]].forEach((t) => {
       R(t[0] - 1, t[1] + t[2] - 2, 2, 5, P.trunk);
       circle(t[0], t[1], t[2] + 1, P.treeDark);
       circle(t[0], t[1], t[2], P.tree);
@@ -215,7 +221,7 @@ const Scene = (function () {
     // 꽃
     const fl = ['#ff77a8', '#ffffff', '#ffd84a', '#c9a6ff'];
     for (let i = 0; i < 70; i++) {
-      const x = Math.floor(rnd() * GW), y = 112 + Math.floor(rnd() * 32);
+      const x = -EXT + Math.floor(rnd() * LW), y = 112 + Math.floor(rnd() * 32);
       if (Math.abs(x - pathCx(y)) < pathHalf(y) + 1) continue;
       if (x > 192 + (y - 97) * 0.5 - 1) continue;
       R(x, y, 1, 1, fl[Math.floor(rnd() * fl.length)]);
@@ -230,22 +236,26 @@ const Scene = (function () {
     layers = { sky, clouds, front };
   }
 
-  // t: 초 단위 시간. 구름과 새가 천천히 움직인다.
-  function draw(ctx, t) {
+  // t: 초 단위 시간. w,h: 그릴 영역 크기(화면을 꽉 채우도록 확대해서 덮는다).
+  function draw(ctx, t, w, h) {
     if (!layers) build();
+    w = w || GW * K; h = h || GH * K;
     ctx.imageSmoothingEnabled = false;
-    ctx.drawImage(layers.sky, 0, 0, GW * K, GH * K);
-    const ox = (t * 0.6) % GW;
-    ctx.drawImage(layers.clouds, ox * K, 0, GW * K, GH * K);
-    ctx.drawImage(layers.clouds, (ox - GW) * K, 0, GW * K, GH * K);
-    ctx.drawImage(layers.front, 0, 0, GW * K, GH * K);
+    // 높이에 맞춰 확대(기본 4배). 화면이 더 넓으면 양옆 풍경을 더 보여 준다.
+    const sc = Math.max(w / LW, h / GH);
+    const ox = (w - LW * sc) / 2, oy = (h - GH * sc) / 2;
+    ctx.drawImage(layers.sky, ox, oy, LW * sc, GH * sc);
+    const cx = ((t * 0.6) % LW) * sc;
+    ctx.drawImage(layers.clouds, ox + cx, oy, LW * sc, GH * sc);
+    ctx.drawImage(layers.clouds, ox + cx - LW * sc, oy, LW * sc, GH * sc);
+    ctx.drawImage(layers.front, ox, oy, LW * sc, GH * sc);
     ctx.fillStyle = P.bird;
     for (let i = 0; i < 3; i++) {
-      const bx = Math.floor(((t * 7 + i * 83) % (GW + 30)) - 15);
+      const bx = Math.floor(((t * 7 + i * 83) % (LW + 30)) - 15) + EXT;
       const by = Math.floor(24 + i * 11 + 2 * Math.sin(t * 2 + i));
       const up = Math.floor(t * 4 + i) % 2 === 0;
       const dots = up ? [[0, 0], [2, 0], [1, 1]] : [[0, 1], [2, 1], [1, 0]];
-      dots.forEach((d) => ctx.fillRect((bx + d[0]) * K, (by + d[1]) * K, K, K));
+      dots.forEach((d) => ctx.fillRect(ox + (bx + d[0]) * sc, oy + (by + d[1]) * sc, sc, sc));
     }
   }
 

@@ -1,18 +1,49 @@
 // 진입점: 타이틀 → 프롤로그(이름 입력 포함) → 가게(준비 중). 마우스/터치 공용.
+// 캔버스는 창 전체를 채운다. 높이(576)는 고정, 너비(W)는 창 비율에 맞춰 늘어나며,
+// UI는 가운데 960 영역(OX만큼 이동)에 그리고 배경 그림은 전체 폭을 덮는다.
 (function () {
   const cv = document.getElementById('game');
   const ctx = cv.getContext('2d');
+  const wrap = document.getElementById('wrap');
   const input = document.getElementById('nameInput');
   const C = CFG.COLOR;
   const L = CFG.LAYOUT;
+  const H = CFG.H;
+  const DW = CFG.DESIGN_W;
+
+  let W = DW;   // 현재 논리 너비
+  let OX = 0;   // 가운데 UI 영역의 왼쪽 오프셋
+  let scale = 1; // 논리 좌표 → 화면 픽셀
 
   let screen = 'title'; // title | intro | name | shop
   let modal = null;     // null | help | settings
   let introIdx = 0;
   let confirmWipe = false;
   let nameError = '';
+  let now = 0;
 
   State.load();
+
+  // ---------- 창 크기에 맞추기 ----------
+  function resize() {
+    const vw = window.innerWidth, vh = window.innerHeight;
+    W = Math.max(CFG.MIN_W, Math.min(CFG.MAX_W, Math.round(H * vw / vh)));
+    OX = (W - DW) / 2;
+    cv.width = W;
+    cv.height = H;
+    scale = Math.min(vw / W, vh / H);
+    wrap.style.width = Math.round(W * scale) + 'px';
+    wrap.style.height = Math.round(H * scale) + 'px';
+    fitInput();
+  }
+
+  function fitInput() {
+    input.style.left = Math.round((OX + 240) * scale) + 'px';
+    input.style.top = Math.round(236 * scale) + 'px';
+    input.style.width = Math.round(480 * scale) + 'px';
+    input.style.height = Math.round(64 * scale) + 'px';
+    input.style.fontSize = Math.round(32 * scale) + 'px';
+  }
 
   // ---------- 그리기 도구 ----------
   function font(size) { return size + 'px ' + CFG.FONT + ', sans-serif'; }
@@ -37,21 +68,22 @@
   }
 
   // 도트풍 테두리 상자
-  function box(b, fill) {
+  function box(b, fill, bw) {
+    bw = bw || 4;
     ctx.fillStyle = C.ink;
-    ctx.fillRect(b.x - 4, b.y - 4, b.w + 8, b.h + 8);
+    ctx.fillRect(b.x - bw, b.y - bw, b.w + bw * 2, b.h + bw * 2);
     ctx.fillStyle = fill;
     ctx.fillRect(b.x, b.y, b.w, b.h);
   }
 
   // 푸른 계열 입체 버튼
   function button(b, label, fill, light, dark) {
-    box(b, fill);
+    box(b, fill, 3);
     ctx.fillStyle = light;
-    ctx.fillRect(b.x, b.y, b.w, 6);
+    ctx.fillRect(b.x, b.y, b.w, 4);
     ctx.fillStyle = dark;
-    ctx.fillRect(b.x, b.y + b.h - 8, b.w, 8);
-    if (label) text(label, b.x + b.w / 2, b.y + b.h / 2 - 2, 28, C.white);
+    ctx.fillRect(b.x, b.y + b.h - 6, b.w, 6);
+    if (label) text(label, b.x + b.w / 2, b.y + b.h / 2 - 1, Math.round(b.h * 0.42), C.white);
   }
   function mainButton(b, label) { button(b, label, C.blue, C.blueLight, C.blueDark); }
   function subButton(b, label) { button(b, label, C.sky, '#8cc3ee', '#3f86c2'); }
@@ -71,14 +103,20 @@
     ctx.fillText(str, x, y);
   }
 
-  // ---------- 입력 영역 ----------
+  // ---------- 입력 영역(가운데 960 영역 좌표) ----------
   const B = {
-    ok: { x: 330, y: 400, w: 300, h: 72 },
-    back: { x: 330, y: 488, w: 300, h: 56 },
-    toTitle: { x: 330, y: 470, w: 300, h: 72 },
-    close: { x: 330, y: 452, w: 300, h: 64 },
-    wipe: { x: 280, y: 372, w: 400, h: 64 },
+    ok: { x: 360, y: 400, w: 240, h: 56 },
+    back: { x: 380, y: 472, w: 200, h: 48 },
+    toTitle: { x: 360, y: 470, w: 240, h: 56 },
+    close: { x: 360, y: 456, w: 240, h: 56 },
+    wipe: { x: 300, y: 372, w: 360, h: 56 },
   };
+
+  // 설정 버튼은 화면 오른쪽 위 모서리에 붙는다(전체 좌표)
+  function settingsRect() {
+    const s = CFG.SETTINGS_BTN;
+    return { x: W - s.margin - s.size, y: s.margin, w: s.size, h: s.size };
+  }
 
   function inside(b, p) {
     return p.x >= b.x && p.x <= b.x + b.w && p.y >= b.y && p.y <= b.y + b.h;
@@ -87,7 +125,7 @@
   function pointer(e) {
     const r = cv.getBoundingClientRect();
     const t = e.touches ? e.touches[0] : e;
-    return { x: (t.clientX - r.left) * CFG.W / r.width, y: (t.clientY - r.top) * CFG.H / r.height };
+    return { x: (t.clientX - r.left) * W / r.width, y: (t.clientY - r.top) * H / r.height };
   }
 
   // ---------- 화면 전환 ----------
@@ -104,11 +142,6 @@
     }
   }
 
-  function fitInput() {
-    input.style.fontSize = Math.round(32 * cv.clientWidth / CFG.W) + 'px';
-  }
-  window.addEventListener('resize', fitInput);
-
   function submitName() {
     const name = input.value.trim();
     if (!name) { nameError = '이름을 적어 줘!'; return; }
@@ -121,7 +154,8 @@
   function onPress(e) {
     if (e.target === input) return;
     e.preventDefault();
-    const p = pointer(e);
+    const abs = pointer(e);
+    const p = { x: abs.x - OX, y: abs.y }; // 가운데 UI 영역 좌표
 
     if (modal) {
       if (modal === 'help' && inside(B.close, p)) modal = null;
@@ -134,7 +168,7 @@
     }
 
     if (screen === 'title') {
-      if (inside(L.settingsBtn, p)) modal = 'settings';
+      if (inside(settingsRect(), abs)) modal = 'settings';
       else if (inside(L.helpBtn, p)) modal = 'help';
       else if (inside(L.startBtn, p)) {
         if (State.hasSave()) go('shop');
@@ -154,26 +188,38 @@
   cv.addEventListener('touchstart', onPress, { passive: false });
   input.addEventListener('input', () => { nameError = ''; });
   input.addEventListener('keydown', (e) => { if (e.key === 'Enter') submitName(); });
+  window.addEventListener('resize', resize);
 
   // ---------- 화면별 그리기 ----------
-  function drawTitle(t) {
-    Scene.draw(ctx, t);
+  function drawGearButton() {
+    const sb = settingsRect();
+    button(sb, '', C.blue, C.blueLight, C.blueDark);
+    const gs = 3, gw = DATA.GEAR[0].length * gs;
+    sprite(DATA.GEAR, sb.x + (sb.w - gw) / 2, sb.y + (sb.h - gw) / 2 - 1, gs);
+  }
+
+  function drawTitle() {
+    Scene.draw(ctx, now, W, H);
+    ctx.save();
+    ctx.translate(OX, 0);
     outlineText(DATA.TITLE_LINES[0], 480, 58, 40, C.white);
     outlineText(DATA.TITLE_LINES[1], 480, 112, 40, C.yellow);
     outlineText(DATA.SUBTITLE, 480, 160, 22, C.white);
     mainButton(L.startBtn, State.hasSave() ? '이어하기' : '시작하기');
     subButton(L.helpBtn, '게임 설명');
-    const sb = L.settingsBtn;
-    box(sb, C.white);
-    sprite(DATA.GEAR, sb.x + (sb.w - 11 * 5) / 2, sb.y + (sb.h - 11 * 5) / 2, 5);
+    ctx.restore();
+    drawGearButton();
   }
 
   function drawIntro() {
-    Scene.draw(ctx, now);
+    Scene.draw(ctx, now, W, H);
+    ctx.save();
+    ctx.translate(OX, 0);
     const d = { x: 40, y: 420, w: 880, h: 130 };
     box(d, C.white);
     text(DATA.INTRO[introIdx], d.x + 30, d.y + 52, 26, C.ink, 'left');
     text('▼ 화면을 눌러 계속', d.x + d.w - 24, d.y + d.h - 26, 18, C.gray, 'right');
+    ctx.restore();
   }
 
   function drawName() {
@@ -199,9 +245,10 @@
 
   function drawModal() {
     ctx.fillStyle = 'rgba(20,50,77,0.55)';
-    ctx.fillRect(0, 0, CFG.W, CFG.H);
-    const m = { x: 160, y: 90, w: 640, h: 440 };
-    box(m, C.white);
+    ctx.fillRect(0, 0, W, H);
+    ctx.save();
+    ctx.translate(OX, 0);
+    box({ x: 160, y: 90, w: 640, h: 440 }, C.white);
     if (modal === 'help') {
       text('게임 설명', 480, 142, 32, C.ink);
       DATA.HOWTO.forEach((s, i) => text(s, 200, 215 + i * 50, 22, C.ink, 'left'));
@@ -217,20 +264,26 @@
       text(DATA.CREDIT_LINE, 480, 480, 18, C.gray);
       mainButton(B.close, '닫기');
     }
+    ctx.restore();
   }
 
-  let now = 0;
   function draw(ts) {
     now = (ts || 0) / 1000;
     ctx.fillStyle = C.bg;
-    ctx.fillRect(0, 0, CFG.W, CFG.H);
-    if (screen === 'title') drawTitle(now);
+    ctx.fillRect(0, 0, W, H);
+    if (screen === 'title') drawTitle();
     else if (screen === 'intro') drawIntro();
-    else if (screen === 'name') drawName();
-    else drawShop();
+    else {
+      ctx.save();
+      ctx.translate(OX, 0);
+      if (screen === 'name') drawName(); else drawShop();
+      ctx.restore();
+    }
     if (modal) drawModal();
     requestAnimationFrame(draw);
   }
+
+  resize();
 
   // 폰트가 로드된 뒤 시작(실패해도 1.5초 후 시작)
   let started = false;
