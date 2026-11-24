@@ -126,11 +126,11 @@ const Cutscene = (function () {
     '..hssssssssh..',
     '...ssssssss...',
     '..bbbbbbbbbb..',
-    '.bbbbbyybbbbb.',
-    '.bbbbbyybbbbb.',
-    '.bbbBBBBBBbbb.',
+    '.SSSSSSSSSSSS.',
+    '.bbbbbbbbbbbb.',
+    '.SSSSSSSSSSSS.',
     '.ssbbbbbbbbss.',
-    '...bbbbbbbb...',
+    '...SSSSSSSS...',
     '...BBBBBBBB...',
     '...ppp..ppp...',
     '...ppp..ppp...',
@@ -151,9 +151,9 @@ const Cutscene = (function () {
     '..bbbbbbbbbb..',
     '.bbbBBBBBBbbb.',
     'bbbbbbBBbbbbbb',
-    '.bbbbbyybbbbb.',
-    '...bbbyybbb...',
+    '.SSSSSSSSSSSS.',
     '...bbbbbbbb...',
+    '...SSSSSSSS...',
     '...BBBBBBBB...',
     '...ppp..ppp...',
     '...ppp..ppp...',
@@ -168,9 +168,9 @@ const Cutscene = (function () {
     '.hKssKh.',
     '.hssssh.',
     '..ssss..',
-    '.bbbbbb.',
+    '.SSSSSS.',
     'sbbbbbbs',
-    '.bbbbbb.',
+    '.SSSSSS.',
     '.pp..pp.',
     '.dd..dd.',
   ];
@@ -187,11 +187,11 @@ const Cutscene = (function () {
     '..hhhhssssss..',
     '....hsssss....',
     '....bbbbbbb...',
-    '....bbbbbyb...',
-    '....bbbbbyb...',
-    '....bBBBBbb...',
+    '....SSSSSSS...',
     '....bbbbbbb...',
+    '....SSSSSSS...',
     '....bbbbbbb...',
+    '....SSSSSSS...',
     '....BBBBBBB...',
   ];
   const SIDE_LEGS = {
@@ -211,13 +211,13 @@ const Cutscene = (function () {
   const ME_WALK = [sideFrame('fwd', 'wide'), sideFrame('down', 'pass'), sideFrame('back', 'wide'), sideFrame('down', 'pass')];
   // 멀리서 본 주인공의 옆모습(2프레임)
   const ME_MINI_WALK = [
-    ['..hhhh..', '.hhhhhh.', '.hhhsss.', '.hhhsKs.', '..hhsss.', '...sss..', '..bbbb..', '..bbbs..', '..bbbb..', '.pp..pp.', '.dd..dd.'],
-    ['..hhhh..', '.hhhhhh.', '.hhhsss.', '.hhhsKs.', '..hhsss.', '...sss..', '..bbbb..', '.sbbbb..', '..bbbb..', '..pppp..', '..dddd..'],
+    ['..hhhh..', '.hhhhhh.', '.hhhsss.', '.hhhsKs.', '..hhsss.', '...sss..', '..SSSS..', '..bbbs..', '..SSSS..', '.pp..pp.', '.dd..dd.'],
+    ['..hhhh..', '.hhhhhh.', '.hhhsss.', '.hhhsKs.', '..hhsss.', '...sss..', '..SSSS..', '.sbbbb..', '..SSSS..', '..pppp..', '..dddd..'],
   ];
   // 눈 깜빡임(정면): 눈 두 줄을 한 줄 선으로
   const ME_BLINK = ME_FRONT.map((r, i) => (i === 5 ? '.hssssssssssh.' : r));
   const ME_PAL = { h: '#4a3426', H: '#7a5640', s: '#ffd9b5', c: '#ff9fa0', m: '#c0584a', K: '#14324d', w: '#ffffff',
-    b: '#3f8fe0', B: '#2c6cb8', t: '#7fbdf5', y: '#ffd84a', p: '#3b5878', d: '#14324d' };
+    b: '#3f8fe0', B: '#2c6cb8', t: '#7fbdf5', S: '#ffffff', y: '#ffd84a', p: '#3b5878', d: '#14324d' };
 
   // 도트를 한 번만 이미지로 만들고, 바깥에 ink 테두리 1칸을 자동으로 두른다(스티커 같은 모양).
   const spriteImgs = new Map();
@@ -507,7 +507,7 @@ const Cutscene = (function () {
     { h: '#1c1c1c', H: '#3a3a3a', b: '#f2b84b', B: '#c88f20', t: '#ffd98a', s: '#c68642' },
     { h: '#a3522a', H: '#c27040', b: '#a56bd8', B: '#7e4cb0', t: '#c79ae8' },
     { h: '#3b2a20', H: '#5c4333', b: '#ffffff', B: '#c9d9e6', t: '#eef4fa', s: '#8d5524' },
-  ].map((o) => Object.assign({}, ME_PAL, o));
+  ].map((o) => Object.assign({}, ME_PAL, o, { S: o.b })); // 줄무늬(S)는 주인공만: 행인은 단색 옷
   function makeWalkers(n) {
     const r = rngMaker(909);
     return Array.from({ length: n }, (_, i) => ({ x0: r() * 300, y: 103 + Math.floor(r() * 4), speed: (i % 2 ? -1 : 1) * (7 + r() * 6), pal: NPC_PALS[i % NPC_PALS.length] }));
