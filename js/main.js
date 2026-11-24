@@ -136,7 +136,7 @@
 
   // 컷신이 가게 이름 입력칸을 띄우고 읽어 갈 때 쓰는 연결
   const cutHooks = {
-    input: (show, rect) => showInput(show, rect, CFG.SHOP_NAME_MAX, '가게 이름'),
+    input: (show, rect) => showInput(show, rect, CFG.SHOP_NAME_MAX, '가게 이름 (최대 ' + CFG.SHOP_NAME_MAX + '글자)'),
     value: () => input.value,
   };
 

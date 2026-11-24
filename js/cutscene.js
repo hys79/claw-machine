@@ -9,6 +9,7 @@ const Cutscene = (function () {
   let st = null;
   let arcadeImg = null;
   let phoneImg = null;
+  let streetImg = null;
   let px = null; // 장면 위에 매 프레임 그리는 도트 층(인물·소품)
   let pg = null;
 
@@ -159,6 +160,20 @@ const Cutscene = (function () {
     '..dddd..dddd..',
     '..dddd..dddd..',
   ];
+  // 멀리서 본 주인공(아레나·공사장 장면): 구경꾼과 같은 키(약 12칸)
+  const ME_MINI = [
+    '..hhhh..',
+    '.hhhhhh.',
+    '.hssssh.',
+    '.hKssKh.',
+    '.hssssh.',
+    '..ssss..',
+    '.bbbbbb.',
+    'sbbbbbbs',
+    '.bbbbbb.',
+    '.pp..pp.',
+    '.dd..dd.',
+  ];
   // 눈 깜빡임(정면): 눈 두 줄을 한 줄 선으로
   const ME_BLINK = ME_FRONT.map((r, i) => (i === 5 ? '.hssssssssssh.' : r));
   const ME_PAL = { h: '#4a3426', H: '#7a5640', s: '#ffd9b5', c: '#ff9fa0', m: '#c0584a', K: '#14324d', w: '#ffffff',
@@ -166,8 +181,11 @@ const Cutscene = (function () {
 
   // 도트를 한 번만 이미지로 만들고, 바깥에 ink 테두리 1칸을 자동으로 두른다(스티커 같은 모양).
   const spriteImgs = new Map();
-  function outlinedImg(rows) {
-    let img = spriteImgs.get(rows);
+  function outlinedImg(rows, pal) {
+    pal = pal || ME_PAL;
+    let byPal = spriteImgs.get(rows);
+    if (!byPal) { byPal = new Map(); spriteImgs.set(rows, byPal); }
+    let img = byPal.get(pal);
     if (img) return img;
     const w = rows[0].length, h = rows.length;
     img = document.createElement('canvas');
@@ -179,10 +197,10 @@ const Cutscene = (function () {
       if (on(x - 1, y) || on(x + 1, y) || on(x, y - 1) || on(x, y + 1)) rect(g, x + 1, y + 1, 1, 1, '#14324d');
     }
     for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
-      const c = ME_PAL[rows[y][x]];
+      const c = pal[rows[y][x]];
       if (c) rect(g, x + 1, y + 1, 1, 1, c);
     }
-    spriteImgs.set(rows, img);
+    byPal.set(pal, img);
     return img;
   }
 
@@ -209,7 +227,7 @@ const Cutscene = (function () {
     phoneImg = img;
   }
 
-  const TINY = { N: ['#.#', '###', '###', '#.#', '#.#'], E: ['###', '#..', '##.', '#..', '###'], W: ['#...#', '#...#', '#.#.#', '##.##', '#...#'], S: ['.##', '#..', '.#.', '..#', '##.'] };
+  const TINY = { N: ['#.#', '###', '###', '#.#', '#.#'], E: ['###', '#..', '##.', '#..', '###'], W: ['#...#', '#...#', '#.#.#', '##.##', '#...#'], O: ['###', '#.#', '#.#', '#.#', '###'], P: ['###', '#.#', '###', '#..', '#..'], S: ['.##', '#..', '.#.', '..#', '##.'] };
   function tinyText(g, str, x, y, c) {
     for (const ch of str) {
       const rows = TINY[ch];
@@ -255,7 +273,7 @@ const Cutscene = (function () {
     const list = [];
     for (let i = 0; i < n; i++) {
       list.push({
-        x0: r() * 240, y: 98 + Math.floor(r() * 9), speed: (r() < 0.5 ? -1 : 1) * (4 + r() * 6),
+        x0: r() * 114, y: 97 + Math.floor(r() * 9), speed: (r() < 0.5 ? -1 : 1) * (4 + r() * 6),
         skin: SKIN[Math.floor(r() * SKIN.length)], hair: HAIR[Math.floor(r() * HAIR.length)],
         cloth: CLOTH[Math.floor(r() * CLOTH.length)], pants: r() < 0.5 ? '#2d4a66' : '#5a4a3a',
         h: 9 + Math.floor(r() * 3), flag: r() < 0.3 ? CLOTH[Math.floor(r() * CLOTH.length)] : null,
@@ -264,8 +282,9 @@ const Cutscene = (function () {
     list.sort((a, b) => a.y - b.y);
     return list;
   }
+  const CROWD_LO = 64, CROWD_W = 112;
   function drawPerson(g, p, t) {
-    const x = Math.round(((p.x0 + p.speed * t) % 280 + 280) % 280 - 20);
+    const x = Math.round(CROWD_LO + ((((p.x0 + p.speed * t) % CROWD_W) + CROWD_W) % CROWD_W)); // 광장(테라스) 안에서만 돌아다닌다(물가·풀밭 제외)
     const y = p.y - p.h;
     const step = Math.floor(t * 4 + p.x0) % 2;
     rect(g, x + 1, y, 3, 3, p.skin);
@@ -289,29 +308,139 @@ const Cutscene = (function () {
     drawRows(g, ic.rows, ic.pal, Math.round(cx - w / 2), cy);
   }
 
-  // 작은 인형뽑기 가게(컷신 마지막 장면의 소품)
-  function drawShop(g) {
-    const x = 6, y = 66, w = 62, h = 40;
-    rect(g, x - 1, y - 1, w + 2, h + 2, '#14324d');
-    rect(g, x, y, w, h, '#f5f9fc');
-    rect(g, x, y, w, 4, '#2f80d0');
-    // 간판
-    rect(g, x + 6, y + 6, w - 12, 10, '#14324d'); rect(g, x + 7, y + 7, w - 14, 8, '#2f80d0');
-    for (let i = 0; i < 6; i++) rect(g, x + 12 + i * 8, y + 9, 5, 4, i % 2 ? '#ffffff' : '#ffd84a');
-    // 차양(파랑·흰 줄무늬)
-    for (let i = 0; i < w; i += 6) { rect(g, x + i, y + 18, 3, 6, '#2f80d0'); rect(g, x + i + 3, y + 18, 3, 6, '#ffffff'); }
-    rect(g, x, y + 24, w, 1, '#14324d');
-    // 쇼윈도(기계 2대) + 문
-    rect(g, x + 4, y + 26, 34, 14, '#14324d'); rect(g, x + 5, y + 27, 32, 13, '#cfeaff');
-    clawMini(g, x + 7, y + 28, '#2f80d0'); clawMini(g, x + 22, y + 28, '#ffffff');
-    rect(g, x + 42, y + 26, 16, 14, '#14324d'); rect(g, x + 43, y + 27, 14, 13, '#ffe9a0');
-    rect(g, x + 49, y + 27, 1, 13, '#14324d');
+  // ---------- 가게 장면: 거리(사람 키에 맞는 자연스러운 스케일) ----------
+  const lerpHex = (a, b, t) => {
+    const A = [1, 3, 5].map((i) => parseInt(a.slice(i, i + 2), 16)), B = [1, 3, 5].map((i) => parseInt(b.slice(i, i + 2), 16));
+    return 'rgb(' + A.map((v, i) => Math.round(v + (B[i] - v) * t)).join(',') + ')';
+  };
+  const ellipseFill = (g, cx, cy, rx, ry, c) => {
+    for (let y = -ry; y <= ry; y++) { const half = Math.round(rx * Math.sqrt(Math.max(0, 1 - (y * y) / (ry * ry)))); rect(g, cx - half, cy + y, half * 2 + 1, 1, c); }
+  };
+  const GROUND = 98; // 인도 시작 높이
+
+  // 건물 한 채: 창문 격자와 가게 간판 없는 이웃 상점
+  function neighbor(g, x, w, top, wall, trim, awning) {
+    rect(g, x - 1, top - 1, w + 2, GROUND - top + 1, '#14324d');
+    rect(g, x, top, w, GROUND - top, wall);
+    rect(g, x, top, w, 3, trim);
+    for (let wy = top + 8; wy < GROUND - 28; wy += 14) for (let wx = x + 5; wx < x + w - 8; wx += 14) {
+      rect(g, wx, wy, 8, 9, '#14324d'); rect(g, wx + 1, wy + 1, 6, 7, '#bfe3f7'); rect(g, wx + 1, wy + 1, 6, 2, '#e9f6fd');
+    }
+    // 1층 상점: 차양 + 유리
+    const sy = GROUND - 28;
+    for (let i = 0; i < w; i += 6) { rect(g, x + i, sy, 3, 5, awning); rect(g, x + i + 3, sy, 3, 5, '#ffffff'); }
+    rect(g, x, sy + 5, w, 1, '#14324d');
+    rect(g, x + 4, sy + 8, w - 8, 16, '#14324d'); rect(g, x + 5, sy + 9, w - 10, 14, '#d9eefb');
   }
-  function clawMini(g, x, y, cab) {
-    rect(g, x, y, 13, 12, '#14324d'); rect(g, x + 1, y + 1, 11, 10, cab);
-    rect(g, x + 2, y + 2, 9, 5, '#dff1ff');
-    plush(g, x + 3, y + 4, '#ff9fc2'); plush(g, x + 7, y + 4, '#ffd84a');
-    rect(g, x + 2, y + 8, 9, 2, '#0b1e30');
+
+  function buildStreetBg() {
+    const img = document.createElement('canvas');
+    img.width = LW; img.height = GH;
+    const g = img.getContext('2d');
+    g.translate(EXT, 0);
+    for (let y = 0; y < 74; y++) rect(g, -EXT, y, LW, 1, lerpHex('#6fbdf0', '#dcefff', y / 74));
+    [[10, 10, 30], [90, 6, 24], [170, 14, 34], [-30, 20, 26], [230, 8, 30]].forEach((c) => {
+      rect(g, c[0] + 2, c[1] + 3, c[2] - 4, 3, '#ffffff'); rect(g, c[0], c[1] + 4, c[2], 2, '#ffffff'); rect(g, c[0] + 5, c[1] + 1, 9, 3, '#ffffff'); rect(g, c[0] + 2, c[1] + 6, c[2] - 4, 1, '#d6e6f4');
+    });
+    // 멀리 보이는 아파트 숲
+    const r = rngMaker(77);
+    for (let x = -EXT; x < GW + EXT;) {
+      const w = 9 + Math.floor(r() * 5), h = 14 + Math.floor(r() * 26);
+      rect(g, x, 76 - h, w, h, ['#b9cde0', '#adc3d8', '#c6d6e6'][Math.floor(r() * 3)]);
+      for (let wy = 76 - h + 3; wy < 74; wy += 3) for (let wx = x + 1; wx < x + w - 2; wx += 3) rect(g, wx, wy, 1, 1, r() < 0.15 ? '#ffe2a0' : '#e8f1f8');
+      x += w + 1;
+    }
+    // 멀리 보이는 창동 아레나(오른쪽 위, 건물 뒤로 살짝)
+    const cx = 196;
+    for (let x = cx - 32; x <= cx + 32; x++) {
+      const dx = (x - cx) / 32, arc = Math.round(5 * Math.sqrt(Math.max(0, 1 - dx * dx)));
+      for (let y = 52 + arc; y <= 74 + arc; y++) rect(g, x, y, 1, 1, (Math.floor((x - cx + 32) / 3) % 2) ? '#a6d2e6' : '#8fc3dc');
+      rect(g, x, 50 + arc, 1, 3, '#e6edf4');
+    }
+    ellipseFill(g, cx, 52, 31, 5, '#e6edf4'); ellipseFill(g, cx, 52, 27, 4, '#9ed49a'); ellipseFill(g, cx, 52, 16, 2, '#4f86e0');
+    // 이웃 건물
+    neighbor(g, -64, 118, 30, '#ecdfca', '#c9b79a', '#4aa38c');   // 왼쪽(베이지) - 가게 뒤까지 이어진다
+    neighbor(g, 184, 118, 24, '#d9e7f4', '#aac0d6', '#e8776a');   // 오른쪽(연한 파랑)
+    // 인도 + 연석 + 도로
+    for (let y = GROUND; y < 112; y++) rect(g, -EXT, y, LW, 1, y === GROUND ? '#b9c6d4' : '#e6ebf1');
+    for (let x = -EXT; x < GW + EXT; x += 20) rect(g, x, GROUND + 1, 1, 12, '#cfd8e2');
+    rect(g, -EXT, 108, LW, 4, '#aab7c6'); rect(g, -EXT, 108, LW, 1, '#d5dde6');
+    for (let y = 112; y < GH; y++) rect(g, -EXT, y, LW, 1, '#7d8a99');
+    for (let x = -EXT; x < GW + EXT; x += 28) rect(g, x, 128, 14, 2, '#f1f4f7');
+    // 가로수
+    [[40, 108], [206, 108]].forEach((t) => {
+      rect(g, t[0] - 1, t[1] - 14, 3, 14, '#7a5230');
+      ellipseFill(g, t[0], t[1] - 22, 11, 11, '#2d7a47'); ellipseFill(g, t[0], t[1] - 22, 10, 10, '#3f9a55');
+      ellipseFill(g, t[0] - 3, t[1] - 25, 5, 5, '#6cc070');
+    });
+    streetImg = img;
+  }
+
+  // 작은 인형뽑기 기계(14x26): 쇼윈도 안
+  function clawSmall(g, x, y, cab, seed) {
+    const r = rngMaker(seed);
+    rect(g, x, y, 14, 26, '#14324d'); rect(g, x + 1, y + 1, 12, 24, cab);
+    rect(g, x + 2, y + 2, 10, 3, '#ffd84a');
+    rect(g, x + 2, y + 6, 10, 11, '#14324d'); rect(g, x + 3, y + 7, 8, 9, '#e3f3ff');
+    for (let k = 0; k < 5; k++) plush(g, x + 3 + Math.floor(r() * 4), y + 11 + Math.floor(r() * 3), PLUSH[Math.floor(r() * PLUSH.length)]);
+    rect(g, x + 7, y + 8, 1, 3, '#44505c');
+    rect(g, x + 2, y + 18, 10, 3, '#14324d'); rect(g, x + 3, y + 19, 2, 1, '#ff5a5a'); rect(g, x + 8, y + 19, 3, 1, '#ffd84a');
+    rect(g, x + 3, y + 22, 8, 3, '#0b1e30');
+  }
+
+  // 우리 가게(폭 120). 간판에는 플레이어가 지은 가게 이름이 들어간다.
+  function drawStreetShop(g, t, name) {
+    const x0 = 60, w = 120, top = 26;
+    rect(g, x0 - 3, top - 1, w + 6, GROUND - top + 1, '#14324d');
+    rect(g, x0 - 2, top, w + 4, 5, '#2f80d0'); rect(g, x0 - 2, top, w + 4, 1, '#6ab0f0');
+    rect(g, x0, top + 5, w, GROUND - top - 5, '#f7fbfe'); rect(g, x0 + w - 4, top + 5, 4, GROUND - top - 5, '#e1ebf3');
+    // 간판
+    g.font = '11px ' + CFG.FONT + ', sans-serif';
+    g.textBaseline = 'middle'; g.textAlign = 'center';
+    const label = name || '?';
+    const tw = Math.ceil(g.measureText(label).width);
+    const sw = Math.min(w - 8, Math.max(40, tw + 14)), sx = Math.round(x0 + w / 2 - sw / 2);
+    rect(g, sx - 1, top + 7, sw + 2, 17, '#14324d'); rect(g, sx, top + 8, sw, 15, '#2f80d0'); rect(g, sx, top + 8, sw, 2, '#6ab0f0');
+    if (!name) { rect(g, sx + 2, top + 10, sw - 4, 11, 'rgba(255,255,255,0.15)'); }
+    g.fillStyle = '#ffffff';
+    g.fillText(label, Math.round(x0 + w / 2), top + 16);
+    if (name) { for (let i = 0; i < 2; i++) { const sxp = i ? sx + sw + 4 : sx - 7; if (Math.floor(t * 2) % 2) { rect(g, sxp, top + 14, 3, 1, '#ffd84a'); rect(g, sxp + 1, top + 13, 1, 3, '#ffd84a'); } } }
+    // 차양
+    const ay = top + 26;
+    for (let i = 0; i < w; i += 8) { rect(g, x0 + i, ay, 4, 8, '#2f80d0'); rect(g, x0 + i + 4, ay, 4, 8, '#ffffff'); rect(g, x0 + i + (i % 16 ? 4 : 0), ay + 8, 4, 2, i % 16 ? '#ffffff' : '#2f80d0'); }
+    rect(g, x0, ay + 10, w, 1, '#c9d3de');
+    // 쇼윈도(왼쪽): 기계 둘
+    const wy = top + 40, wh = GROUND - 6 - wy;
+    rect(g, x0 + 5, wy - 1, 50, wh + 2, '#14324d'); rect(g, x0 + 6, wy, 48, wh, '#d6edfc'); rect(g, x0 + 6, wy, 48, 3, '#eef8ff');
+    clawSmall(g, x0 + 10, GROUND - 7 - 26, '#2f80d0', 5); clawSmall(g, x0 + 32, GROUND - 7 - 26, '#ffffff', 9);
+    // 문
+    const dx = x0 + 62;
+    rect(g, dx - 1, top + 36, 26, GROUND - top - 36, '#14324d'); rect(g, dx, top + 37, 24, GROUND - top - 37, '#ffe9a0');
+    rect(g, dx + 11, top + 37, 2, GROUND - top - 37, '#14324d'); rect(g, dx + 8, top + 60, 2, 5, '#14324d'); rect(g, dx + 14, top + 60, 2, 5, '#14324d');
+    rect(g, dx + 3, top + 42, 18, 9, '#14324d'); rect(g, dx + 4, top + 43, 16, 7, '#d9455f');
+    tinyText(g, 'OPEN', dx + 5, top + 44, '#ffffff');
+    // 쇼윈도(오른쪽): 인형 선반
+    const rx = x0 + 92;
+    rect(g, rx - 1, wy - 1, 26, wh + 2, '#14324d'); rect(g, rx, wy, 24, wh, '#d6edfc');
+    [wy + 10, wy + 20].forEach((yy) => rect(g, rx, yy, 24, 2, '#8fa9be'));
+    for (let i = 0; i < 4; i++) plush(g, rx + 2 + i * 6, wy + 5, PLUSH[i]);
+    for (let i = 0; i < 4; i++) plush(g, rx + 2 + i * 6, wy + 15, PLUSH[(i + 2) % PLUSH.length]);
+    // 바닥 띠와 화분
+    rect(g, x0, GROUND - 4, w, 4, '#c9d3de');
+    [x0 - 8, x0 + w + 3].forEach((px2) => { rect(g, px2, GROUND - 6, 6, 6, '#c97a4a'); ellipseFill(g, px2 + 3, GROUND - 10, 4, 4, '#3f9a55'); ellipseFill(g, px2 + 2, GROUND - 11, 2, 2, '#6cc070'); });
+  }
+
+  // 거리의 행인들: 주인공과 같은 모양, 머리·옷 색만 다르다(자연스러운 같은 스케일)
+  const NPC_PALS = [
+    { h: '#2b1b10', H: '#4a3426', b: '#e0556f', B: '#b03a52' },
+    { h: '#d9a04a', H: '#f0c070', b: '#6bc16a', B: '#4a9a4a' },
+    { h: '#1c1c1c', H: '#3a3a3a', b: '#f2b84b', B: '#c88f20', s: '#c68642' },
+    { h: '#a3522a', H: '#c27040', b: '#a56bd8', B: '#7e4cb0' },
+    { h: '#3b2a20', H: '#5c4333', b: '#ffffff', B: '#c9d9e6', s: '#8d5524' },
+  ].map((o) => Object.assign({}, ME_PAL, o));
+  function makeWalkers(n) {
+    const r = rngMaker(909);
+    return Array.from({ length: n }, (_, i) => ({ x0: r() * 300, y: 103 + Math.floor(r() * 4), speed: (i % 2 ? -1 : 1) * (7 + r() * 6), pal: NPC_PALS[i % NPC_PALS.length] }));
   }
 
   // ---------- 진행 ----------
@@ -321,6 +450,7 @@ const Cutscene = (function () {
       light: null, flash: 0, shake: 0, title: null, wait: 0, props: [], bg: 'arcade', t0: now };
     if (!arcadeImg) buildArcade();
     if (!phoneImg) buildPhoneBg();
+    if (!streetImg) buildStreetBg();
     nextScene(now);
   }
 
@@ -331,6 +461,7 @@ const Cutscene = (function () {
     st.bg = sc.bg; st.light = sc.light || null; st.props = sc.props || [];
     st.actors = sc.actors.map((a) => Object.assign({ mv: null }, a));
     st.crowd = makeCrowd(sc.crowd || 0);
+    st.walkers = makeWalkers(sc.walkers || 0);
     st.emotes = []; st.say = null; st.block = null; st.title = null; st.i = 0;
     st.phase = 'in'; st.pt = now;
   }
@@ -364,9 +495,10 @@ const Cutscene = (function () {
     }
   }
 
-  const INPUT_PANEL = { x: 200, y: 246, w: 560, h: 150 };
-  const INPUT_RECT = { x: 224, y: 314, w: 360, h: 56 };
-  const INPUT_OK = { x: 600, y: 314, w: 136, h: 56 };
+  // 가게 이름은 대사창 안에서 입력한다(장면을 가리지 않게): 대사 한 줄 아래에 입력칸 + 확정 버튼
+  const ASK_DIALOG = { x: 40, y: 408, w: 880, h: 146 };
+  const INPUT_RECT = { x: 64, y: 486, w: 668, h: 50 };
+  const INPUT_OK = { x: 752, y: 486, w: 144, h: 50 };
 
   // 가게 이름 확정(확정 버튼 / Enter)
   function submit(now) {
@@ -441,6 +573,7 @@ const Cutscene = (function () {
     ctx.imageSmoothingEnabled = false;
     if (st.bg === 'arcade') ctx.drawImage(arcadeImg, sc.ox, sc.oy, LW * sc.sc, GH * sc.sc);
     else if (st.bg === 'phone') ctx.drawImage(phoneImg, sc.ox, sc.oy, LW * sc.sc, GH * sc.sc);
+    else if (st.bg === 'street') ctx.drawImage(streetImg, sc.ox, sc.oy, LW * sc.sc, GH * sc.sc);
     else Scene.draw(ctx, t, W, H, st.bg);
 
     // 인물·소품 층
@@ -448,7 +581,7 @@ const Cutscene = (function () {
     pg.clearRect(0, 0, LW, GH);
     pg.save();
     pg.translate(EXT, 0);
-    if (st.props.indexOf('shop') >= 0) drawShop(pg);
+    if (st.bg === 'street') drawStreetShop(pg, t, State.data.shopName);
     if (st.bg === 'phone') drawPhone(pg, now - st.pt);
     if (st.bg === 'arcade') {
       // 주인공이 하는 기계의 집게(위아래로 움직인다)
@@ -459,12 +592,19 @@ const Cutscene = (function () {
       rect(pg, cx - 2, top + 21 + dy, 5, 1, '#44505c'); rect(pg, cx - 2, top + 22 + dy, 1, 2, '#44505c'); rect(pg, cx + 2, top + 22 + dy, 1, 2, '#44505c');
     }
     const list = st.crowd.map((p) => ({ y: p.y, f: () => drawPerson(pg, p, t) }))
+      .concat((st.walkers || []).map((w) => ({ y: w.y, f: () => {
+        const x = Math.round(-30 + ((((w.x0 + w.speed * t) % 300) + 300) % 300));
+        const img = outlinedImg(ME_FRONT, w.pal);
+        rect(pg, x - 7, w.y - 1, 14, 2, 'rgba(20,50,77,0.22)');
+        pg.drawImage(img, x - 8, w.y - img.height + 1 - (Math.floor(t * 6 + w.x0) % 2));
+      } })))
       .concat(st.actors.map((a) => ({ y: a.y, f: () => {
         const hop = a.mv ? (Math.floor(t * 8) % 2) : 0;
         const blink = (t + a.x * 0.1) % 3.2 > 3.05;
-        const rows = a.pose === 'back' ? ME_BACK : (blink ? ME_BLINK : ME_FRONT);
+        const mini = a.size === 'mini';
+        const rows = mini ? ME_MINI : (a.pose === 'back' ? ME_BACK : (blink ? ME_BLINK : ME_FRONT));
         const img = outlinedImg(rows);
-        rect(pg, Math.round(a.x) - 7, a.y - 1, 14, 2, 'rgba(20,50,77,0.22)'); // 발밑 그림자
+        rect(pg, Math.round(a.x) - (mini ? 4 : 7), a.y - 1, mini ? 8 : 14, 2, 'rgba(20,50,77,0.22)'); // 발밑 그림자
         pg.drawImage(img, Math.round(a.x - img.width / 2), a.y - img.height + 1 - hop);
       } })));
     list.sort((a, b) => a.y - b.y).forEach((o) => o.f());
@@ -485,23 +625,20 @@ const Cutscene = (function () {
     ctx.save();
     ctx.translate(OX, 0);
     if (st.say && st.phase === 'run') {
-      const L = CFG.LAYOUT.cutDialog;
+      const L = st.block === 'input' ? ASK_DIALOG : CFG.LAYOUT.cutDialog;
       const full = st.say.text;
       const chars = Math.floor((now - st.say.t0) * CFG.TYPE_SPEED);
       let left = chars;
       const lines = UI.wrap(full, L.w - 60, 26).map((s) => { const part = s.slice(0, Math.max(0, left)); left -= s.length; return part; });
-      UI.dialog(L, st.say.tag, lines, chars >= full.length, now);
+      UI.dialog(L, st.say.tag, lines, chars >= full.length && st.block !== 'input', now);
     }
     ctx.restore();
 
-    // 가게 이름 입력 패널(HTML 입력칸은 이 위에 겹쳐 놓인다)
+    // 가게 이름 입력: 확정 버튼과 오류 문구(HTML 입력칸은 대사창 위에 겹쳐 놓인다)
     if (st.block === 'input' && st.phase === 'run') {
       ctx.save();
       ctx.translate(OX, 0);
-      UI.panel(INPUT_PANEL, C.white);
-      UI.text('가게 이름을 지어 주세요', 480, INPUT_PANEL.y + 32, 22, C.ink);
-      UI.text('최대 ' + CFG.SHOP_NAME_MAX + '글자', 480, INPUT_PANEL.y + 58, 16, C.sub);
-      if (st.inputErr) UI.text(st.inputErr, 480, INPUT_PANEL.y + 138, 18, C.alert);
+      if (st.inputErr) UI.text(st.inputErr, 900, ASK_DIALOG.y + 28, 18, C.alert, 'right');
       UI.button(INPUT_OK, '확정', { style: 'primary', onClick: () => submit(now) });
       ctx.restore();
     }

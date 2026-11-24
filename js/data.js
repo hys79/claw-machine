@@ -8,8 +8,8 @@ const DATA = {
   RANK_NAMES: ['동네 가게', '상권 대표', '도시 명소', '전국구', '세계구'],
 
   // 프롤로그 컷신 대본(대사 위주). {name}=플레이어 이름, {shop}=가게 이름, {이:shop}처럼 쓰면 그 이름의 받침에 맞는 조사(이/가, 은/는, 을/를)만 붙는다.
-  // bg: arcade(오락실 안) | phone(핸드폰 뉴스) | site(공사 중인 아레나) | arena(완공된 아레나), light: 화면 색 입힘, props: 소품, crowd: 사람 수
-  // actors: 등장 인물(x, y는 발 위치, 도트 좌표 0~240). 단계: say(태그, 글), wait(초), move(id, x, 속도, true=끝날 때까지 대기),
+  // bg: arcade(오락실 안) | phone(핸드폰 뉴스) | site(공사 중인 아레나) | arena(완공된 아레나) | street(우리 가게가 있는 거리), light: 화면 색 입힘, crowd: 광장 구경꾼 수, walkers: 거리 행인 수
+  // actors: 등장 인물(x, y는 발 위치, 도트 좌표 0~240, size:'mini'는 멀리서 본 작은 모습). 단계: say(태그, 글), wait(초), move(id, x, 속도, true=끝날 때까지 대기),
   //         emote(id, !/bulb), pose(id, front/back), shake(세기), ask(태그, 글) = 대사 뒤에 가게 이름 입력, title(큰 글, 작은 글)
   STORY: [
     { bg: 'arcade', actors: [{ id: 'me', x: 133, y: 106, pose: 'back' }], steps: [
@@ -28,19 +28,19 @@ const DATA = {
       ['say', '뉴스 앵커', '공연장 주변에는 새로운 상권도 함께 조성될 전망입니다.'],
       ['say', '{name}', '수만 명에… 외국인 관광객까지 온다고?'],
     ] },
-    { bg: 'site', actors: [{ id: 'me', x: 20, y: 106 }], steps: [
+    { bg: 'site', actors: [{ id: 'me', x: 20, y: 106, size: 'mini' }], steps: [
       ['move', 'me', 92, 34, true],
       ['say', '{name}', '여기가 그 공사 현장이구나. 진짜 엄청 크네…'],
       ['say', '{name}', '이런 곳 바로 옆에서 인형뽑기 가게를 하면…'],
       ['emote', 'me', 'bulb'], ['wait', 1.0],
       ['say', '{name}', '사람들이 줄을 서겠는데?!'],
     ] },
-    { bg: 'arena', light: 'dusk', crowd: 40, actors: [{ id: 'me', x: 38, y: 106 }], steps: [
+    { bg: 'arena', light: 'dusk', crowd: 40, actors: [{ id: 'me', x: 118, y: 106, size: 'mini' }], steps: [
       ['say', '{name}', '공연이 끝나고 사람들이 우르르 쏟아져 나오면…'],
       ['say', '{name}', '다들 기념으로 인형 하나쯤은 뽑아 가겠지!'],
       ['say', '{name}', '좋아, 결정했어. 내가 직접 인형뽑기 가게를 차려 보는 거야!'],
     ] },
-    { bg: 'arena', props: ['shop'], crowd: 9, actors: [{ id: 'me', x: 92, y: 106 }], steps: [
+    { bg: 'street', walkers: 4, actors: [{ id: 'me', x: 104, y: 106 }], steps: [
       ['say', '{name}', '가게 자리는 여기로 하고… 이제 간판이 문제네.'],
       ['ask', '{name}', '인형뽑기 가게 이름은 뭘로 짓지…?'],
       ['emote', 'me', 'bulb'],
