@@ -231,9 +231,11 @@ const Cutscene = (function () {
     13: '.bbbbbyybbbbb.',
   }[i] || r));
   const SUIT_PAL = Object.assign({}, ME_PAL, { h: '#d6d6d6', H: '#ffffff', M: '#f2f2f2', b: '#2aa198', B: '#1f7a73', S: '#2aa198', t: '#4cc4ba', y: '#ff8a3d', p: '#3a3a5c', c: '#ffd9b5' });
+  // 옆모습에서도 모자가 보이게: 윗줄 두 칸을 주황 모자(챙은 앞쪽으로 튀어나옴)로
+  const SUIT_WALK = ME_WALK.map((f) => f.map((r, i) => (i === 0 ? '.....yyyyyy...' : i === 1 ? '..yyyyyyyyyyyy' : r)));
   const KINDS = {
-    me: { front: ME_FRONT, blink: ME_BLINK, pal: ME_PAL },
-    suit: { front: SUIT_FRONT, blink: SUIT_FRONT, pal: SUIT_PAL },
+    me: { front: ME_FRONT, blink: ME_BLINK, pal: ME_PAL, walk: ME_WALK },
+    suit: { front: SUIT_FRONT, blink: SUIT_FRONT, pal: SUIT_PAL, walk: SUIT_WALK },
   };
 
 
@@ -503,7 +505,7 @@ const Cutscene = (function () {
   ].map((o) => Object.assign({}, ME_PAL, o, { S: o.b })); // 줄무늬(S)는 주인공만: 행인은 단색 옷
   function makeWalkers(n) {
     const r = rngMaker(909);
-    return Array.from({ length: n }, (_, i) => ({ x0: r() * 300, y: 103 + Math.floor(r() * 4), speed: (i % 2 ? -1 : 1) * (7 + r() * 6), pal: NPC_PALS[i % NPC_PALS.length] }));
+    return Array.from({ length: n }, (_, i) => ({ x0: r() * 300, y: 103 + Math.floor(r() * 4), speed: (i % 2 ? -1 : 1) * (16 + r() * 10), pal: NPC_PALS[i % NPC_PALS.length] }));
   }
 
   // ---------- 진행 ----------
@@ -552,7 +554,7 @@ const Cutscene = (function () {
       if (op === 'title') { st.title = { main: fmt(s[1]), sub: fmt(s[2] || ''), t0: now }; st.block = 'title'; Sound.sfx('fanfare'); return; }
       if (op === 'move') {
         const a = actor(s[1]);
-        if (a) a.mv = { to: s[2], spd: s[3] || 30 };
+        if (a) a.mv = { to: s[2], spd: (s[3] || 30) * 1.8 };
         if (s[4] === true) { st.block = 'move'; return; }
       } else if (op === 'pose') { const a = actor(s[1]); if (a) a.pose = s[2]; }
       else if (op === 'emote') { st.emotes.push({ id: s[1], ch: s[2], t0: now }); Sound.sfx(s[2] === 'bulb' ? 'ding' : 'pop'); }
@@ -678,7 +680,7 @@ const Cutscene = (function () {
         if (walking) a.faceLeft = a.mv.to < a.x;
         const kind = KINDS[a.kind || 'me'];
         let rows = mini ? ME_MINI : (a.pose === 'back' ? ME_BACK : (blink ? kind.blink : kind.front));
-        if (walking) rows = mini ? ME_MINI_WALK[Math.floor(t * 6) % 2] : ME_WALK[Math.floor(t * 6) % 4];
+        if (walking) rows = mini ? ME_MINI_WALK[Math.floor(t * 6) % 2] : kind.walk[Math.floor(t * 6) % 4];
         const img = outlinedImg(rows, kind.pal);
         rect(pg, Math.round(a.x) - (mini ? 4 : 7), a.y - 1, mini ? 8 : 14, 2, 'rgba(20,50,77,0.22)'); // 발밑 그림자
         drawFacing(pg, img, Math.round(a.x), a.y - img.height + 1 - (walking && !mini ? hop : 0), walking && a.faceLeft);
