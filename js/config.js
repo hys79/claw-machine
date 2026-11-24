@@ -54,5 +54,37 @@ const CFG = {
   SETTINGS_BTN: { size: 40, margin: 14 }, // 화면 오른쪽 위 모서리 기준
   // 소리 기본값(0~1)과 저장 위치(게임 저장과 별개)
   AUDIO: { SAVE_KEY: 'claw-machine-audio', BGM_FILE: 'assets/audio/background.mp3', BGM_GAIN: 0.8, BGM_DEFAULT: 0.3, SFX_DEFAULT: 0.8 },
+  // 시뮬레이션 수치(초안: 밸런스 단계에서 조정). 시뮬레이션 코어(js/sim.js)가 읽는다.
+  SIM: {
+    OPEN: 10, CLOSE: 22,                       // 영업 시간(시). 틱 1 = 가상 1분
+    HOUR_W: [0.5, 0.6, 0.9, 1.1, 0.9, 0.8, 0.9, 1.2, 1.6, 1.8, 1.4, 0.9], // 10시~21시 시간대별 유동 가중치
+    DOW: [0.85, 0.8, 0.85, 0.9, 1.15, 1.4, 1.35],                          // 월~일 (1일차 = 월요일)
+    WEATHER: [['sunny', 0.5, 1.0], ['cloudy', 0.28, 0.95], ['rain', 0.17, 0.7], ['snow', 0.05, 0.6]], // [이름, 확률, 방문객 배수]
+    BASE_VISITORS: 125,                        // 평균 조건(평판 50, 1단계 점포) 하루 방문객
+    REP_MULT: [0.6, 1.4],                      // 평판 0 → 0.6배, 100 → 1.4배
+    SHOW: { from: 17, to: 22, mult: 2.0, first: 8 }, // 공연일(첫 공연 8일차부터 매주 토요일): 17~22시 방문객 배수
+    CONV_K: 0.9,                               // 손님이 마음에 드는 인형을 못 찾으면 돌아가는 기준
+    STRENGTH: [0.6, 0.8, 1.0, 1.25, 1.5],      // 집게 힘 1~5단계 배수
+    RESPOND: { delay: 25, cost: 1.0 },         // 고장: 사장이 바로 대응
+    AUTO: { delay: 120, cost: 1.4 },           // 고장: 방치(기사 호출)
+    REFILL_DELAY: 20,                          // 인형이 떨어지고 보충까지 걸리는 분
+    START_REP: 30,
+    BREAK_BASE: 0.02, BREAK_AGE: 0.003, BREAK_MAX: 0.2, // 기계 하루 고장 확률 = 기본 + 가동일수 × 계수
+    SHOP: [
+      { name: '소형 점포 (8평)', slots: 3, rent: 900000, foot: 1.0, cost: 0 },
+      { name: '중형 점포 (15평)', slots: 5, rent: 1700000, foot: 1.35, cost: 9000000 },
+      { name: '대형 점포 (25평)', slots: 8, rent: 3000000, foot: 1.8, cost: 28000000 },
+      { name: '아레나 앞 플래그십 (40평)', slots: 12, rent: 5500000, foot: 2.6, cost: 80000000 },
+    ],
+    WAREHOUSE: [
+      { cap: 150, cost: 0, upkeep: 0 },
+      { cap: 300, cost: 1500000, upkeep: 1000 },
+      { cap: 600, cost: 4000000, upkeep: 2500 },
+      { cap: 1200, cost: 10000000, upkeep: 6000 },
+    ],
+    BULK: [[100, 0.15], [50, 0.10], [20, 0.05]], // [수량 이상, 할인율]
+    TREND: { days: 7, appeal: 1.5, price: 1.25 }, // 유행 태그: 손님 선호 배수 / 도매가 배수
+    RANK_POP: [0, 150, 350, 700, 1400],           // 가게 랭크 1~5에 필요한 인기도
+  },
   TYPE_SPEED: 32, // 프롤로그 글자 출력 속도(글자/초)
 };
