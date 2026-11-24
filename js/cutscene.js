@@ -546,9 +546,9 @@ const Cutscene = (function () {
       if (!s) { st.phase = 'out'; st.pt = now; return; }
       const op = s[0];
       if (op === 'narr') { st.say = { tag: '', text: fmt(s[1]), t0: now }; st.block = 'say'; return; }
-      if (op === 'say') { st.say = { tag: fmt(s[1]), text: fmt(s[2]), t0: now }; st.block = 'say'; return; }
+      if (op === 'say') { st.say = { tag: fmt(s[1]), color: (DATA.SPEAKER_COLORS || {})[s[1]], text: fmt(s[2]), t0: now }; st.block = 'say'; return; }
       if (op === 'ask') { // 대사 뒤에 가게 이름 입력칸이 뜬다
-        st.say = { tag: fmt(s[1]), text: fmt(s[2]), t0: now }; st.block = 'input'; st.inputErr = '';
+        st.say = { tag: fmt(s[1]), color: (DATA.SPEAKER_COLORS || {})[s[1]], text: fmt(s[2]), t0: now }; st.block = 'input'; st.inputErr = '';
         if (st.hooks.input) st.hooks.input(true, INPUT_RECT);
         return;
       }
@@ -716,7 +716,7 @@ const Cutscene = (function () {
       if (chars > (st.say.ticked || 0) && chars < full.length) { if (chars % 2 === 0) Sound.sfx('type'); st.say.ticked = chars; } // 글자 나오는 소리
       let left = chars;
       const lines = UI.wrap(full, L.w - 60, 26).map((s) => { const part = s.slice(0, Math.max(0, left)); left -= s.length; return part; });
-      UI.dialog(L, st.say.tag, lines, chars >= full.length && st.block !== 'input', now);
+      UI.dialog(L, st.say.tag, lines, chars >= full.length && st.block !== 'input', now, st.say.color);
     }
     ctx.restore();
 

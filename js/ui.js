@@ -231,12 +231,12 @@ const UI = (function () {
   }
 
   // 대사창: 흰 창 + 위에 걸친 이름표 + 끝에 깜빡이는 ▼
-  function dialog(b, tag, lines, ready, t) {
+  function dialog(b, tag, lines, ready, t, tagColor) {
     panel(b, C.white, BW.dialog);
     if (tag) {
       ctx.font = font(18);
       const tw = Math.ceil(ctx.measureText(tag).width) + 28;
-      framed({ x: b.x + 20, y: b.y - 20, w: tw, h: 32 }, C.blue, BW.button);
+      framed({ x: b.x + 20, y: b.y - 20, w: tw, h: 32 }, tagColor || C.blue, BW.button);
       text(tag, b.x + 20 + tw / 2, b.y - 4, 18, C.white);
     }
     lines.forEach((s, i) => text(s, b.x + 30, b.y + 42 + i * 38, 26, C.ink, 'left'));
