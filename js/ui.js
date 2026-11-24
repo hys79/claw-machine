@@ -239,7 +239,7 @@ const UI = (function () {
       framed({ x: b.x + 20, y: b.y - 20, w: tw, h: 32 }, C.blue, BW.button);
       text(tag, b.x + 20 + tw / 2, b.y - 4, 18, C.white);
     }
-    lines.forEach((s, i) => text(s, b.x + 30, b.y + 52 + i * 38, 26, C.ink, 'left'));
+    lines.forEach((s, i) => text(s, b.x + 30, b.y + 42 + i * 38, 26, C.ink, 'left'));
     if (ready && Math.floor(t * 2) % 2 === 0) text('▼', b.x + b.w - 30, b.y + b.h - 28, 22, C.blue, 'right');
   }
 
