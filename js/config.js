@@ -7,14 +7,27 @@ const CFG = {
   NAME_MAX: 8,
   START_MONEY: 3000000, // 시작 자금(원)
   START_RANK: 1,
+  // 흰색 톤 배경 + 푸른 계열 버튼
   COLOR: {
-    bg: '#1a1c2c',
-    panel: '#333c57',
-    cream: '#fff1e8',
-    pink: '#ff77a8',
-    yellow: '#ffec27',
-    teal: '#29adff',
-    gray: '#94b0c2',
-    dark: '#1a1c2c',
+    bg: '#f3f8fc',
+    ink: '#14324d',
+    white: '#ffffff',
+    blue: '#2f80d0',
+    blueLight: '#6ab0f0',
+    blueDark: '#1f5f9f',
+    sky: '#5ba3e0',
+    banner: '#1f5f8b',
+    gray: '#6b8399',
+    line: '#c9d9e6',
+    alert: '#d9455f',
+    yellow: '#ffd84a',
+  },
+  // 메인 화면 배치(목업 기준)
+  LAYOUT: {
+    titleBox: { x: 180, y: 28, w: 600, h: 150 },
+    sceneBox: { x: 180, y: 196, w: 600, h: 214 },
+    startBtn: { x: 180, y: 436, w: 290, h: 80 },
+    helpBtn: { x: 490, y: 436, w: 290, h: 80 },
+    settingsBtn: { x: 852, y: 28, w: 80, h: 80 },
   },
 };

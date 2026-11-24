@@ -12,7 +12,7 @@
 - 폰·태블릿 터치로도 플레이 가능해야 한다(버튼 크게, 호버 의존 금지).
 
 ## 화면 테마
-- 전체적으로 8비트 도트풍(픽셀 아트). 이미지는 확대할 때 뭉개지지 않게 `image-rendering: pixelated`와 정수 배율 스케일을 쓴다.
+- 전체적으로 8비트 도트풍(픽셀 아트). 흰색 톤 배경에 푸른 계열 버튼(색은 `js/config.js`의 `CFG.COLOR`). 이미지는 확대할 때 뭉개지지 않게 `image-rendering: pixelated`와 정수 배율 스케일을 쓴다.
 - 게임 폰트는 `assets/fonts/game.woff2`(`@font-face`로 불러와 Canvas 텍스트와 HTML UI 모두에 사용).
 
 ## 톤
