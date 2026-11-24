@@ -1,6 +1,7 @@
-// 진입점: 타이틀 → 프롤로그(이름 입력 포함) → 가게(준비 중). 마우스/터치 공용.
+// 진입점: 타이틀 → 프롤로그(이름 입력 포함) → 가게(준비 중). 마우스/터치/키보드 공용.
 // 캔버스는 창 전체를 채운다. 높이(576)는 고정, 너비(W)는 창 비율에 맞춰 늘어나며,
 // UI는 가운데 960 영역(OX만큼 이동)에 그리고 배경 그림은 전체 폭을 덮는다.
+// 버튼은 UI.button이 그리면서 클릭 영역도 등록한다(규칙: docs/UI_GUIDE.md).
 (function () {
   const cv = document.getElementById('game');
   const ctx = cv.getContext('2d');
@@ -18,6 +19,7 @@
   let screen = 'title'; // title | intro | name | shop
   let modal = null;     // null | help | settings
   let introIdx = 0;
+  let introT0 = 0;      // 현재 프롤로그 줄이 시작된 시각(타자 효과)
   let confirmWipe = false;
   let nameError = '';
   let now = 0;
@@ -45,17 +47,7 @@
     input.style.fontSize = Math.round(32 * scale) + 'px';
   }
 
-  // ---------- 그리기 도구 ----------
-  function font(size) { return size + 'px ' + CFG.FONT + ', sans-serif'; }
-
-  function text(s, x, y, size, color, align) {
-    ctx.fillStyle = color;
-    ctx.font = font(size);
-    ctx.textAlign = align || 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(s, x, y);
-  }
-
+  // ---------- 작은 도구 ----------
   function sprite(rows, x, y, s) {
     rows.forEach((row, j) => {
       for (let i = 0; i < row.length; i++) {
@@ -67,59 +59,12 @@
     });
   }
 
-  // 도트풍 테두리 상자
-  function box(b, fill, bw) {
-    bw = bw || 4;
-    ctx.fillStyle = C.ink;
-    ctx.fillRect(b.x - bw, b.y - bw, b.w + bw * 2, b.h + bw * 2);
-    ctx.fillStyle = fill;
-    ctx.fillRect(b.x, b.y, b.w, b.h);
-  }
-
-  // 푸른 계열 입체 버튼
-  function button(b, label, fill, light, dark) {
-    box(b, fill, 3);
-    ctx.fillStyle = light;
-    ctx.fillRect(b.x, b.y, b.w, 4);
-    ctx.fillStyle = dark;
-    ctx.fillRect(b.x, b.y + b.h - 6, b.w, 6);
-    if (label) text(label, b.x + b.w / 2, b.y + b.h / 2 - 1, Math.round(b.h * 0.42), C.white);
-  }
-  function mainButton(b, label) { button(b, label, C.blue, C.blueLight, C.blueDark); }
-  function subButton(b, label) { button(b, label, C.sky, '#8cc3ee', '#3f86c2'); }
-
   function won(n) { return n.toLocaleString('ko-KR') + '원'; }
-
-  // 글자 테두리(배경 그림 위에서도 잘 읽히게)
-  function outlineText(str, x, y, size, fill) {
-    ctx.font = font(size);
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.lineJoin = 'round';
-    ctx.lineWidth = Math.max(6, Math.round(size / 4));
-    ctx.strokeStyle = C.ink;
-    ctx.strokeText(str, x, y);
-    ctx.fillStyle = fill;
-    ctx.fillText(str, x, y);
-  }
-
-  // ---------- 입력 영역(가운데 960 영역 좌표) ----------
-  const B = {
-    ok: { x: 360, y: 400, w: 240, h: 56 },
-    back: { x: 380, y: 472, w: 200, h: 48 },
-    toTitle: { x: 360, y: 470, w: 240, h: 56 },
-    close: { x: 360, y: 456, w: 240, h: 56 },
-    wipe: { x: 300, y: 372, w: 360, h: 56 },
-  };
 
   // 설정 버튼은 화면 오른쪽 위 모서리에 붙는다(전체 좌표)
   function settingsRect() {
     const s = CFG.SETTINGS_BTN;
     return { x: W - s.margin - s.size, y: s.margin, w: s.size, h: s.size };
-  }
-
-  function inside(b, p) {
-    return p.x >= b.x && p.x <= b.x + b.w && p.y >= b.y && p.y <= b.y + b.h;
   }
 
   function pointer(e) {
@@ -140,6 +85,7 @@
       fitInput();
       setTimeout(() => input.focus(), 0);
     }
+    if (next === 'intro') { introIdx = 0; introT0 = now; }
   }
 
   function submitName() {
@@ -151,62 +97,77 @@
     go('shop');
   }
 
+  function closeModal() { modal = null; confirmWipe = false; }
+
+  // 프롤로그: 글자가 나오는 중이면 한 번에 보여 주고, 다 나왔으면 다음 줄로
+  function advanceIntro() {
+    const full = DATA.INTRO[introIdx];
+    if ((now - introT0) * CFG.TYPE_SPEED < full.length) { introT0 = now - 999; return; }
+    introIdx++;
+    introT0 = now;
+    if (introIdx >= DATA.INTRO.length) go('name');
+  }
+
+  // ---------- 입력 ----------
   function onPress(e) {
     if (e.target === input) return;
     e.preventDefault();
-    const abs = pointer(e);
-    const p = { x: abs.x - OX, y: abs.y }; // 가운데 UI 영역 좌표
-
-    if (modal) {
-      if (modal === 'help' && inside(B.close, p)) modal = null;
-      else if (modal === 'settings') {
-        if (State.hasSave() && inside(B.wipe, p)) {
-          if (confirmWipe) { State.wipe(); modal = null; confirmWipe = false; } else confirmWipe = true;
-        } else if (inside(B.close, p)) { modal = null; confirmWipe = false; }
-      }
-      return;
-    }
-
-    if (screen === 'title') {
-      if (inside(settingsRect(), abs)) modal = 'settings';
-      else if (inside(L.helpBtn, p)) modal = 'help';
-      else if (inside(L.startBtn, p)) {
-        if (State.hasSave()) go('shop');
-        else { introIdx = 0; go('intro'); }
-      }
-    } else if (screen === 'intro') {
-      introIdx++;
-      if (introIdx >= DATA.INTRO.length) go('name');
-    } else if (screen === 'name') {
-      if (inside(B.ok, p)) submitName();
-      else if (inside(B.back, p)) go('title');
-    } else if (screen === 'shop') {
-      if (inside(B.toTitle, p)) go('title');
-    }
+    const p = pointer(e);
+    UI.setMouse({ x: p.x, y: p.y, on: !e.touches }); // 터치는 호버 없음
+    if (UI.click(p)) return;
+    if (!modal && screen === 'intro') advanceIntro(); // 빈 곳을 눌러도 진행
   }
   cv.addEventListener('mousedown', onPress);
   cv.addEventListener('touchstart', onPress, { passive: false });
+  cv.addEventListener('mousemove', (e) => { const p = pointer(e); UI.setMouse({ x: p.x, y: p.y, on: true }); });
+  cv.addEventListener('mouseleave', () => UI.setMouse({ x: -1, y: -1, on: false }));
   input.addEventListener('input', () => { nameError = ''; });
   input.addEventListener('keydown', (e) => { if (e.key === 'Enter') submitName(); });
   window.addEventListener('resize', resize);
 
+  // Esc: 팝업 닫기 → 이전 화면 → (타이틀에서는) 설정 열기
+  window.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+      if (modal) closeModal();
+      else if (screen === 'title') modal = 'settings';
+      else go('title');
+    } else if ((e.key === 'Enter' || e.key === ' ') && !modal && screen === 'intro') {
+      e.preventDefault();
+      advanceIntro();
+    }
+  });
+
   // ---------- 화면별 그리기 ----------
   function drawGearButton() {
-    const sb = settingsRect();
-    button(sb, '', C.blue, C.blueLight, C.blueDark);
-    const gs = 3, gw = DATA.GEAR[0].length * gs;
-    sprite(DATA.GEAR, sb.x + (sb.w - gw) / 2, sb.y + (sb.h - gw) / 2 - 1, gs);
+    UI.button(settingsRect(), '', {
+      style: 'primary',
+      onClick: () => { modal = 'settings'; },
+      draw(x, y, w, h) {
+        const gs = 3, gw = DATA.GEAR[0].length * gs;
+        sprite(DATA.GEAR, x + (w - gw) / 2, y + (h - gw) / 2 - 1, gs);
+      },
+    });
+  }
+
+  function backButton(label) {
+    UI.button(L.backBtn, label || '돌아가기', { style: 'secondary', onClick: () => go('title') });
   }
 
   function drawTitle() {
     Scene.draw(ctx, now, W, H);
     ctx.save();
     ctx.translate(OX, 0);
-    outlineText(DATA.TITLE_LINES[0], 480, 58, 40, C.white);
-    outlineText(DATA.TITLE_LINES[1], 480, 112, 40, C.yellow);
-    outlineText(DATA.SUBTITLE, 480, 160, 22, C.white);
-    mainButton(L.startBtn, State.hasSave() ? '이어하기' : '시작하기');
-    subButton(L.helpBtn, '게임 설명');
+    UI.text(DATA.TITLE_LINES[0], 480, 58, 40, C.white, 'center', C.ink);
+    UI.text(DATA.TITLE_LINES[1], 480, 112, 40, C.yellow, 'center', C.ink);
+    ctx.font = UI.font(20);
+    const sw = Math.ceil(ctx.measureText(DATA.SUBTITLE).width) + 40;
+    UI.glass({ x: 480 - sw / 2, y: 142, w: sw, h: 36 });
+    UI.text(DATA.SUBTITLE, 480, 161, 20, C.white);
+    UI.button(L.startBtn, State.hasSave() ? '이어하기' : '시작하기', {
+      style: 'primary',
+      onClick: () => { if (State.hasSave()) go('shop'); else go('intro'); },
+    });
+    UI.button(L.helpBtn, '게임 설명', { style: 'secondary', onClick: () => { modal = 'help'; } });
     ctx.restore();
     drawGearButton();
   }
@@ -215,60 +176,89 @@
     Scene.draw(ctx, now, W, H);
     ctx.save();
     ctx.translate(OX, 0);
-    const d = { x: 40, y: 420, w: 880, h: 130 };
-    box(d, C.white);
-    text(DATA.INTRO[introIdx], d.x + 30, d.y + 52, 26, C.ink, 'left');
-    text('▼ 화면을 눌러 계속', d.x + d.w - 24, d.y + d.h - 26, 18, C.gray, 'right');
+    const full = DATA.INTRO[introIdx];
+    const chars = Math.floor((now - introT0) * CFG.TYPE_SPEED);
+    let left = chars;
+    const lines = UI.wrap(full, L.dialog.w - 60, 26).map((s) => {
+      const part = s.slice(0, Math.max(0, left));
+      left -= s.length;
+      return part;
+    });
+    UI.dialog(L.dialog, '프롤로그', lines, chars >= full.length, now);
+    UI.button(L.skipBtn, '건너뛰기', { style: 'secondary', size: 18, onClick: () => go('name') });
     ctx.restore();
   }
 
   function drawName() {
-    text(DATA.NAME_PROMPT, 480, 150, 34, C.ink);
-    text('이름은 최대 ' + CFG.NAME_MAX + '글자예요', 480, 205, 22, C.gray);
-    if (nameError) text(nameError, 480, 345, 24, C.alert);
-    mainButton(B.ok, '확인');
-    subButton(B.back, '뒤로');
+    const np = L.namePanel;
+    UI.panel(np, C.white);
+    UI.title('가게 신청서', 480, np.y + 42);
+    UI.text(DATA.NAME_PROMPT, 480, 186, 26, C.ink);
+    UI.text('이름은 최대 ' + CFG.NAME_MAX + '글자예요', 480, 214, 18, C.sub);
+    if (nameError) UI.text(nameError, 480, 332, 22, C.alert);
+    UI.button({ x: 360, y: 372, w: 240, h: 56 }, '확인', { style: 'primary', onClick: submitName });
+    backButton('돌아가기');
   }
 
   function drawShop() {
     const d = State.data;
-    text(d.playerName + ' 사장님의 인형뽑기 가게', 480, 70, 34, C.ink);
-    box({ x: 240, y: 130, w: 480, h: 250 }, C.white);
+    UI.moneyPill(L.moneyPill, won(d.money));
+    UI.title(d.playerName + ' 사장님의 인형뽑기 가게', 480, 92);
+    const card = { x: 240, y: 156, w: 480, h: 232 };
+    UI.panel(card, C.white);
     const rows = [['가게 랭크', DATA.RANK_NAMES[d.rank - 1] || ''], ['소지금', won(d.money)], ['영업 일차', d.day + '일차']];
     rows.forEach((r, i) => {
-      text(r[0], 280, 185 + i * 70, 24, C.gray, 'left');
-      text(r[1], 680, 185 + i * 70, 24, C.ink, 'right');
+      const cy = card.y + 44 + i * 70;
+      UI.text(r[0], card.x + 36, cy, 22, C.sub, 'left');
+      UI.text(r[1], card.x + card.w - 36, cy, 24, C.ink, 'right');
+      if (i < rows.length - 1) UI.hline(card.x + 24, cy + 35, card.w - 48);
     });
-    text('가게 화면은 다음 단계에서 만들어요', 480, 425, 22, C.gray);
-    subButton(B.toTitle, '타이틀로');
+    UI.text('가게 화면은 다음 단계에서 만들어요', 480, 436, 20, C.sub);
+    backButton('타이틀로');
   }
 
   function drawModal() {
-    ctx.fillStyle = 'rgba(20,50,77,0.55)';
-    ctx.fillRect(0, 0, W, H);
+    UI.scrim(W, H);
     ctx.save();
     ctx.translate(OX, 0);
-    box({ x: 160, y: 90, w: 640, h: 440 }, C.white);
     if (modal === 'help') {
-      text('게임 설명', 480, 142, 32, C.ink);
-      DATA.HOWTO.forEach((s, i) => text(s, 200, 215 + i * 50, 22, C.ink, 'left'));
-      mainButton(B.close, '닫기');
+      const hp = L.helpPanel;
+      UI.panel(hp, C.white);
+      UI.text('게임 설명', 480, hp.y + 44, 30, C.ink);
+      UI.hline(hp.x + 30, hp.y + 70, hp.w - 60);
+      let y = hp.y + 112;
+      DATA.HOWTO.forEach((s) => {
+        const lines = UI.wrap(s, hp.w - 96, 20);
+        UI.rect(hp.x + 34, y - 4, 8, 8, C.blue);
+        lines.forEach((ln, j) => UI.text(ln, hp.x + 60, y + j * 28, 20, C.ink, 'left'));
+        y += lines.length * 28 + 22;
+      });
+      UI.button({ x: 360, y: hp.y + hp.h - 78, w: 240, h: 52 }, '닫기', { style: 'primary', modal: true, onClick: closeModal });
     } else {
-      text('설정', 480, 142, 32, C.ink);
+      const sp = L.settingsPanel;
+      UI.panel(sp, C.white);
+      UI.text('설정', 480, sp.y + 40, 30, C.ink);
+      UI.hline(sp.x + 30, sp.y + 66, sp.w - 60);
       if (State.hasSave()) {
-        button(B.wipe, confirmWipe ? '정말 지울까요? 한 번 더' : '처음부터 다시', confirmWipe ? C.alert : C.sky,
-          confirmWipe ? '#ef7a8f' : '#8cc3ee', confirmWipe ? '#a52c43' : '#3f86c2');
+        UI.button({ x: 300, y: sp.y + 92, w: 360, h: 52 }, confirmWipe ? '정말 지울까요? 한 번 더' : '처음부터 다시', {
+          style: confirmWipe ? 'danger' : 'secondary',
+          modal: true,
+          onClick: () => {
+            if (confirmWipe) { State.wipe(); closeModal(); } else confirmWipe = true;
+          },
+        });
       } else {
-        text('저장된 데이터가 없어요', 480, 400, 22, C.gray);
+        UI.text('저장된 데이터가 없어요', 480, sp.y + 118, 20, C.sub);
       }
-      text(DATA.CREDIT_LINE, 480, 480, 18, C.gray);
-      mainButton(B.close, '닫기');
+      UI.text(DATA.CREDIT_LINE, 480, sp.y + 190, 16, C.sub);
+      UI.button({ x: 360, y: sp.y + sp.h - 76, w: 240, h: 52 }, '닫기', { style: 'primary', modal: true, onClick: closeModal });
     }
     ctx.restore();
   }
 
   function draw(ts) {
     now = (ts || 0) / 1000;
+    UI.begin(ctx, cv, modal);
     ctx.fillStyle = C.bg;
     ctx.fillRect(0, 0, W, H);
     if (screen === 'title') drawTitle();
@@ -280,6 +270,7 @@
       ctx.restore();
     }
     if (modal) drawModal();
+    UI.end();
     requestAnimationFrame(draw);
   }
 

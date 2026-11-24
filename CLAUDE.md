@@ -13,6 +13,7 @@
 
 ## 화면 테마
 - 전체적으로 8비트 도트풍(픽셀 아트). 흰색 톤 배경에 푸른 계열 버튼(색은 `js/config.js`의 `CFG.COLOR`). 이미지는 확대할 때 뭉개지지 않게 `image-rendering: pixelated`와 정수 배율 스케일을 쓴다.
+- 화면·버튼·색 규칙은 `docs/UI_GUIDE.md`를 따르고, 새 화면의 버튼·창은 `js/ui.js`의 `UI` 부품으로 만든다.
 - 게임 폰트는 `assets/fonts/game.woff2`(`@font-face`로 불러와 Canvas 텍스트와 HTML UI 모두에 사용).
 
 ## 톤

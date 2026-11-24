@@ -7,29 +7,47 @@ const CFG = {
   NAME_MAX: 8,
   START_MONEY: 3000000, // 시작 자금(원)
   START_RANK: 1,
-  // 흰색 톤 배경 + 푸른 계열 버튼
+  // 흰색 톤 배경 + 푸른 계열 포인트. 분홍·보라 등 다른 색이 UI를 지배하지 않게 한다(docs/UI_GUIDE.md).
   COLOR: {
-    bg: '#f3f8fc',
-    ink: '#14324d',
-    white: '#ffffff',
-    blue: '#2f80d0',
+    bg: '#f3f8fc',      // 화면 바탕
+    white: '#ffffff',   // 패널·카드 바탕, 어두운 면 위 글자
+    ink: '#14324d',     // 글자, 모든 테두리·글자 외곽선
+    sub: '#5f7a92',     // 보조 글자, 비활성
+    soft: '#e4eff8',    // 부드러운 버튼·칸 바탕
+    line: '#c9d9e6',    // 구분선, 버튼 아래 그늘
+    edge: '#8fa9be',    // 비활성 버튼 테두리
+    blue: '#2f80d0',    // 주 버튼
+    blueHi: '#4590e0',  // 주 버튼 마우스 오버
     blueLight: '#6ab0f0',
     blueDark: '#1f5f9f',
-    sky: '#5ba3e0',
-    banner: '#1f5f8b',
-    gray: '#6b8399',
-    line: '#c9d9e6',
-    alert: '#d9455f',
-    yellow: '#ffd84a',
+    alert: '#d9455f',   // 위험·경고(초기화 확인)
+    alertHi: '#e8647a',
+    alertLight: '#ef7a8f',
+    alertDark: '#a52c43',
+    yellow: '#ffd84a',  // 돈·강조(타이틀 둘째 줄, 코인)
+    glass: 'rgba(20,50,77,0.82)',        // HUD 알약·반투명 상자
+    glassLine: 'rgba(255,255,255,0.35)',
+    scrim: 'rgba(10,30,50,0.62)',        // 팝업 뒤 어두운 막
+    shadow: 'rgba(10,30,50,0.35)',       // 딱딱한 오프셋 그림자
   },
+  // 테두리 두께: 가장 바깥 창(panel)만 굵게, 나머지는 얇게
+  BW: { button: 2, panel: 5, dialog: 3, small: 2 },
   // 화면 크기: 높이는 고정, 너비는 창 비율에 맞춰 늘어난다(UI는 가운데 960 영역에 배치)
   DESIGN_W: 960,
   MIN_W: 768,
   MAX_W: 1440,
-  // 메인 화면 배치(가운데 960 영역 기준)
+  // 화면 배치(가운데 960 영역 기준)
   LAYOUT: {
     startBtn: { x: 252, y: 490, w: 240, h: 56 },
     helpBtn: { x: 508, y: 490, w: 200, h: 56 },
+    backBtn: { x: 16, y: 520, w: 150, h: 44 },    // 서브 화면 왼쪽 아래(공통)
+    moneyPill: { x: 16, y: 12, w: 210, h: 40 },   // 왼쪽 위 소지금 알약(공통)
+    skipBtn: { x: 804, y: 16, w: 140, h: 44 },    // 프롤로그 건너뛰기
+    dialog: { x: 40, y: 396, w: 880, h: 156 },    // 프롤로그 대사창
+    namePanel: { x: 200, y: 84, w: 560, h: 372 }, // 가게 신청서(이름 입력)
+    helpPanel: { x: 160, y: 88, w: 640, h: 420 },
+    settingsPanel: { x: 240, y: 104, w: 480, h: 322 },
   },
   SETTINGS_BTN: { size: 56, margin: 16 }, // 화면 오른쪽 위 모서리 기준
+  TYPE_SPEED: 32, // 프롤로그 글자 출력 속도(글자/초)
 };
