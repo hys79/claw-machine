@@ -1,12 +1,13 @@
-// 시뮬레이션 코어: 화면(DOM·Canvas)과 무관한 순수 계산. 하루를 한 번에 돌려 결과와 사건 로그를 돌려준다.
-// 영업 화면은 이 결과(틱별 사건 로그)를 재생해서 대표 손님만 그린다. 수치는 CFG.SIM, 데이터는 DATA.DOLLS/MACHINES/CUSTOMERS.
-// 시드 기반 난수라 같은 상태·같은 하루는 항상 같은 결과가 나온다(배속·재현·테스트).
+// 시뮬레이션 코어: 화면(DOM·Canvas)과 무관한 순수 계산. 수치는 CFG.SIM, 데이터는 DATA.DOLLS/MACHINES/CUSTOMERS/EQUIPMENT.
+// 하루는 openDay()로 열어 틱(가상 1분) 단위로 진행한다. 영업 화면은 step()으로 사건을 받아 그리고 act()로 플레이어 조작
+// (보충·청소·환전·수리)을 넣는다. runDay()/skipDay()는 하루를 한 번에 돌린다.
+// 시드 기반 난수라 같은 상태에서 같은 조작을 하면 항상 같은 결과가 나온다.
 const Sim = (function () {
   const Z = CFG.SIM;
   const TICKS = (Z.CLOSE - Z.OPEN) * 60;
   const dollMap = {};
   DATA.DOLLS.forEach((d) => { dollMap[d.id] = d; });
-  const SIZES = ['S', 'M', 'L'];
+  const custTypes = DATA.CUSTOMERS;
 
   // ---------- 난수 ----------
   function makeRng(seed) {
@@ -25,6 +26,7 @@ const Sim = (function () {
       for (let i = 0; i < items.length; i++) { x -= weights[i]; if (x <= 0) return items[i]; }
       return items[items.length - 1];
     };
+    r.range = (a2) => a2[0] + r() * (a2[1] - a2[0]);
     return r;
   }
   const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
@@ -42,34 +44,49 @@ const Sim = (function () {
   const mdef = (m) => DATA.MACHINES[m.type];
   const shopLv = (st) => Z.SHOP[st.shopLevel];
   const whLv = (st) => Z.WAREHOUSE[st.warehouseLevel];
+  const slotsOf = (m) => Math.floor(mdef(m).slots * (m.mods.capacity ? Z.CAPACITY_MULT : 1));
   const slotsUsed = (m) => { const def = mdef(m); let n = 0; Object.keys(m.load).forEach((id) => { n += m.load[id].qty * def.slotCost[doll(id).size]; }); return n; };
+  const freeSlots = (m) => slotsOf(m) - slotsUsed(m);
   const loadQty = (m) => { let n = 0; Object.keys(m.load).forEach((id) => { n += m.load[id].qty; }); return n; };
+  const loadedIds = (m) => Object.keys(m.load).filter((id) => m.load[id].qty > 0);
   const canHold = (m, d) => mdef(m).sizes.indexOf(d.size) >= 0;
   const footUsed = (st) => st.machines.reduce((n, m) => n + mdef(m).footprint, 0);
   const stockTotal = (st) => Object.keys(st.stock).reduce((n, id) => n + st.stock[id].qty, 0);
   const incomingTotal = (st) => st.incoming.reduce((n, o) => n + o.qty, 0);
-  const isShowDay = (day) => day >= Z.SHOW.first && ((day - 1) % 7) === 5; // 토요일
-  const dowOf = (day) => (day - 1) % 7;
-  const trendBoost = (st, d) => (st.trend.tags.some((t) => d.tags.indexOf(t) >= 0) ? Z.TREND.appeal : 1);
+  const dowOf = (day) => (day - 1) % 7; // 0 = 월
+  const isShowDay = (day) => day >= Z.SHOW.first && dowOf(day) >= 5;
+  const isSpecialDay = (day) => day >= Z.SHOW.special.first && (day - Z.SHOW.special.first) % Z.SHOW.special.every === 0;
+  function nextSpecial(day) { // day 이후(당일 포함) 첫 특별 공연일
+    const S = Z.SHOW.special;
+    return day <= S.first ? S.first : S.first + Math.ceil((day - S.first) / S.every) * S.every;
+  }
+  const hasTrend = (st, d) => d.taste.indexOf(st.trend.taste) >= 0;
+  // 지금 발주할 수 있는 인형(랭크 해금 + 특별 공연 한정은 공연 전 일주일)
+  function orderable(st, d) {
+    if (d.rank > st.rank) return false;
+    if (!d.special) return true;
+    const left = nextSpecial(st.day) - st.day;
+    return left >= 1 && left <= Z.SHOW.special.lead;
+  }
 
   // ---------- 새 게임 ----------
   function newGame(playerName, shopName, seed) {
     const st = {
-      v: 1, seed: seed == null ? (Date.now() & 0x7fffffff) : seed, playerName: playerName || '', shopName: shopName || '',
+      v: 2, seed: seed == null ? (Date.now() & 0x7fffffff) : seed, playerName: playerName || '', shopName: shopName || '',
       day: 1, money: CFG.START_MONEY, rank: 1, shopLevel: 0, warehouseLevel: 0, reputation: Z.START_REP, popularity: 0,
-      totalRevenue: 0, avgRev: null, machines: [], stock: {}, incoming: [], trend: { tags: [], until: 0 }, history: [], nextId: 1,
-      weather: 'sunny', env: null, bankrupt: false,
+      avgRev: null, totalRevenue: 0, machines: [], stock: {}, incoming: [], equip: {}, staff: false,
+      trend: { taste: null, next: null, until: 0 }, history: [], nextId: 1,
+      rankUpDay: 0, expandDay: 0, champion: false, weather: 'sunny', env: null, bankrupt: false,
     };
-    addMachine(st, 'standard', true);
-    addMachine(st, 'mini', true);
-    [['chick', 14], ['rocket', 12], ['breadduck', 10], ['roundbear', 10], ['berrybunny', 8], ['penguin', 8], ['bigbear', 3]].forEach(([id, q]) => addStock(st, id, q, doll(id).cost));
+    addMachine(st, 'standard');
+    addMachine(st, 'mini');
+    [['chick', 14], ['rocket', 12], ['oldrobot', 6], ['roundbear', 10], ['berrybunny', 8], ['retrofrog', 5], ['bigbear', 2]].forEach(([id, q]) => addStock(st, id, q, doll(id).cost));
     startOfDay(st);
     return st;
   }
 
-  function addMachine(st, type, free) {
-    const def = DATA.MACHINES[type];
-    const m = { id: st.nextId++, type, strength: 3, price: def.priceDef, plan: {}, load: {}, age: 0 };
+  function addMachine(st, type) {
+    const m = { id: st.nextId++, type, difficulty: 3, price: DATA.MACHINES[type].priceDef, plan: {}, load: {}, mods: {}, age: 0 };
     st.machines.push(m);
     return m;
   }
@@ -81,14 +98,17 @@ const Sim = (function () {
     s.qty += qty;
   }
 
-  // ---------- 구매 / 확장 ----------
+  // ---------- 구매 / 확장 / 직원 ----------
+  function pay(st, cost) { if (st.money < cost) return false; st.money -= cost; return true; }
+  const NO_MONEY = { ok: false, why: '돈이 부족해요' };
+  const NO_RANK = { ok: false, why: '가게 랭크가 더 필요해요' };
+
   function buyMachine(st, type) {
     const def = DATA.MACHINES[type];
     if (!def) return { ok: false, why: '없는 기계' };
-    if (def.rank > st.rank) return { ok: false, why: '아직 구입할 수 없어요 (랭크가 더 필요해요)' };
-    if (st.money < def.price) return { ok: false, why: '돈이 부족해요' };
+    if (def.rank > st.rank) return NO_RANK;
     if (footUsed(st) + def.footprint > shopLv(st).slots) return { ok: false, why: '점포에 자리가 없어요' };
-    st.money -= def.price;
+    if (!pay(st, def.price)) return NO_MONEY;
     return { ok: true, machine: addMachine(st, type), cost: def.price };
   }
   // 기계 팔기: 구입가의 40%(중고). 안의 인형은 창고로 돌아간다.
@@ -101,26 +121,63 @@ const Sim = (function () {
     st.money += gain;
     return { ok: true, gain };
   }
+  // 설비: 가게 전체 설비는 key만, 기계 개조(perMachine)는 machineId도 준다.
+  function buyEquipment(st, key, machineId) {
+    const e = DATA.EQUIPMENT[key];
+    if (!e) return { ok: false, why: '없는 설비' };
+    if (e.rank > st.rank) return NO_RANK;
+    if (e.perMachine) {
+      const m = st.machines.find((x) => x.id === machineId);
+      if (!m) return { ok: false, why: '기계를 골라 주세요' };
+      if (m.mods[key]) return { ok: false, why: '이미 개조했어요' };
+      if (key === 'capacity' && mdef(m).kind === 'timer') return { ok: false, why: '타이머 기계는 개조할 수 없어요' };
+      if (!pay(st, e.price)) return NO_MONEY;
+      m.mods[key] = true;
+    } else {
+      if (st.equip[key]) return { ok: false, why: '이미 있어요' };
+      if (!pay(st, e.price)) return NO_MONEY;
+      st.equip[key] = true;
+    }
+    return { ok: true, cost: e.price };
+  }
   function expandWarehouse(st) {
     const next = Z.WAREHOUSE[st.warehouseLevel + 1];
     if (!next) return { ok: false, why: '최대 단계예요' };
-    if (st.money < next.cost) return { ok: false, why: '돈이 부족해요' };
-    st.money -= next.cost; st.warehouseLevel++;
+    if (!pay(st, next.cost)) return NO_MONEY;
+    st.warehouseLevel++;
     return { ok: true, cost: next.cost };
   }
   function expandShop(st) {
     const next = Z.SHOP[st.shopLevel + 1];
     if (!next) return { ok: false, why: '최대 단계예요' };
-    if (st.rank < st.shopLevel + 2) return { ok: false, why: '가게 랭크가 더 필요해요' };
-    if (st.money < next.cost) return { ok: false, why: '돈이 부족해요' };
-    st.money -= next.cost; st.shopLevel++;
+    if (st.rank < next.rank) return NO_RANK;
+    if (!pay(st, next.cost)) return NO_MONEY;
+    st.shopLevel++;
+    st.expandDay = st.day; // 확장 후 첫 영업일은 건너뛸 수 없다
     return { ok: true, cost: next.cost };
+  }
+  function hireStaff(st) {
+    if (st.staff) return { ok: false, why: '이미 직원이 있어요' };
+    if (st.rank < Z.STAFF.rank) return NO_RANK;
+    st.staff = true;
+    return { ok: true, wage: Z.STAFF.wage };
+  }
+  // 기계 설정(난이도 1~5, 한 판 가격). scope: 'one' 이 기계만 / 'type' 같은 종류 전체 / 'all' 가게 전체
+  function setOption(st, machineId, key, value, scope) {
+    const base = st.machines.find((m) => m.id === machineId);
+    if (!base || (key !== 'difficulty' && key !== 'price')) return { ok: false, why: '바꿀 수 없어요' };
+    const list = st.machines.filter((m) => (scope === 'all' ? true : (scope === 'type' ? m.type === base.type : m === base)));
+    list.forEach((m) => {
+      if (key === 'difficulty') m.difficulty = clamp(Math.round(value), 1, 5);
+      else m.price = clamp(round10(value), mdef(m).priceRange[0], mdef(m).priceRange[1]);
+    });
+    return { ok: true, count: list.length };
   }
 
   // ---------- 발주 ----------
   function unitCost(st, id, qty) {
     const d = doll(id);
-    let c = d.cost * (st.trend.tags.some((t) => d.tags.indexOf(t) >= 0) ? Z.TREND.price : 1);
+    let c = d.cost * (hasTrend(st, d) ? Z.TREND.price : 1);
     for (let i = 0; i < Z.BULK.length; i++) if (qty >= Z.BULK[i][0]) { c *= 1 - Z.BULK[i][1]; break; }
     return round10(c);
   }
@@ -131,21 +188,19 @@ const Sim = (function () {
     for (const it of items) {
       const d = doll(it.id);
       if (!d || it.qty <= 0) continue;
-      if (d.rank > st.rank) return { ok: false, why: d.name + '은(는) 아직 취급할 수 없어요' };
+      if (!orderable(st, d)) return { ok: false, why: d.name + '은(는) 지금 주문할 수 없어요' };
       const uc = unitCost(st, it.id, it.qty);
       lines.push({ id: it.id, qty: it.qty, unit: uc });
       qty += it.qty; cost += uc * it.qty;
     }
     if (!qty) return { ok: false, why: '주문할 인형이 없어요' };
     if (stockTotal(st) + incomingTotal(st) + qty > whLv(st).cap) return { ok: false, why: '창고 공간이 부족해요' };
-    if (st.money < cost) return { ok: false, why: '돈이 부족해요' };
-    st.money -= cost;
+    if (!pay(st, cost)) return NO_MONEY;
     lines.forEach((l) => st.incoming.push({ id: l.id, qty: l.qty, unit: l.unit, arrive: st.day + 1 }));
     return { ok: true, cost, qty };
   }
 
   // ---------- 기계 채우기 ----------
-  function freeSlots(m) { return mdef(m).slots - slotsUsed(m); }
   function loadMachine(st, m, id, qty) {
     const d = doll(id), s = st.stock[id];
     if (!d || !s || !canHold(m, d)) return 0;
@@ -162,33 +217,28 @@ const Sim = (function () {
   function unloadAll(st, m) {
     Object.keys(m.load).forEach((id) => { if (m.load[id].qty > 0) addStock(st, id, m.load[id].qty, m.load[id].cost); delete m.load[id]; });
   }
-  function refill(st, m) { // 계획(plan)대로 창고에서 채운다
+  // 보충: 계획(plan)대로 창고에서 채우고, 칸이 남으면 계획에 있는 인형 → 창고의 다른 인형 순으로 마저 채운다.
+  function refill(st, m) {
     let n = 0;
-    Object.keys(m.plan).forEach((id) => {
+    const planned = Object.keys(m.plan);
+    planned.forEach((id) => {
       const have = m.load[id] ? m.load[id].qty : 0;
       if (m.plan[id] > have) n += loadMachine(st, m, id, m.plan[id] - have);
     });
+    planned.concat(Object.keys(st.stock)).forEach((id) => { if (freeSlots(m) > 0) n += loadMachine(st, m, id, 999); });
     return n;
   }
 
-  // ---------- 손님 선호 ----------
-  const custTypes = DATA.CUSTOMERS;
-  function appeal(st, ct, d, m) {
-    let tagM = 1;
-    if (d.tags.length) { let s = 0; d.tags.forEach((t) => { s += ct.tagW[t] || 1; }); tagM = s / d.tags.length; }
-    const tier = d.tier === 'limited' ? 1.35 : (d.tier === 'rare' ? 1.2 : 1.0);
+  // ---------- 취향과 확률 ----------
+  const matchCount = (tastes, d) => tastes.reduce((n, t) => n + (d.taste.indexOf(t) >= 0 ? 1 : 0), 0);
+  function grabProb(m, d, skill) {
     const def = mdef(m);
-    return tier * tagM * (ct.sizeW[d.size] || 1) * trendBoost(st, d) * (def.sizeAppeal[d.size] || 1) * def.appeal * (ct.machineW[m.type] || 1);
-  }
-  function grabProb(st, m, d, ct, env) {
-    const def = mdef(m);
-    if (def.kind === 'timer') { // 정확한 시간에 버튼 누르기: 손님의 버튼 오차 ~ 정규분포(숙련자일수록 작다), 허용 오차 안이면 성공
-      const tol = def.tolerance[m.strength - 1], sigma = def.sigma / ct.skill;
-      return erf(tol / (sigma * Math.SQRT2));
+    if (def.kind === 'timer') { // 정확한 시간에 버튼 누르기: 버튼 오차 ~ 정규분포(숙련될수록 작다), 허용 오차 안이면 성공
+      return erf(def.tolerance[m.difficulty - 1] / ((def.sigma / skill) * Math.SQRT2));
     }
     const base = def.grab[d.size];
     if (!base) return 0;
-    return clamp(base * Z.STRENGTH[m.strength - 1] * (1 - d.hard * 0.4) * ct.skill, 0, 0.6);
+    return clamp(base * Z.STRENGTH[m.difficulty - 1] * (1 - d.hard * 0.4) * skill, 0, 0.6);
   }
 
   // ---------- 하루의 시작 ----------
@@ -199,317 +249,441 @@ const Sim = (function () {
       return true;
     });
     const rng = makeRng(st.seed * 7919 + st.day * 31 + 5);
-    // 유행: 7일마다 태그 2개
-    if (st.day === 1 || st.day >= st.trend.until) {
-      const tags = DATA.TAGS.filter((t) => ['희귀', '한정', '공연'].indexOf(t) < 0);
-      const a = tags[Math.floor(rng() * tags.length)];
-      let b = a; while (b === a) b = tags[Math.floor(rng() * tags.length)];
-      st.trend = { tags: [a, b], until: st.day + Z.TREND.days };
+    // 유행 취향: 매주 바뀌고 다음 유행을 미리 알려 준다
+    if (st.day >= st.trend.until || !st.trend.taste) {
+      const pickT = (not) => { const list = DATA.TASTES.filter((t) => t !== not && (t !== '아이돌' || st.rank >= 2)); return list[Math.floor(rng() * list.length)]; };
+      const taste = st.trend.next || pickT(null);
+      st.trend = { taste, next: pickT(taste), until: st.day + Z.TREND.days };
     }
     const w = rng.pickW(Z.WEATHER, Z.WEATHER.map((x) => x[1]));
     st.weather = w[0];
-    st.env = { weather: w[0], weatherMult: w[2], show: isShowDay(st.day), dow: dowOf(st.day) };
+    st.env = { weather: w[0], weatherMult: w[2], show: isShowDay(st.day), special: isSpecialDay(st.day), dow: dowOf(st.day) };
     return st.env;
   }
 
   // 오늘 예상 방문객
-  function forecast(st) {
-    const env = st.env || startOfDay(st);
-    return Math.round(expectedVisitors(st, env));
-  }
   function repMult(st) { return Z.REP_MULT[0] + (Z.REP_MULT[1] - Z.REP_MULT[0]) * (st.reputation / 100); }
   function expectedVisitors(st, env) {
-    return Z.BASE_VISITORS * Z.DOW[env.dow] * env.weatherMult * repMult(st) * shopLv(st).foot * (0.5 + 0.5 * machineVariety(st)) * eyeCatch(st);
+    const showMult = env.special ? Z.SHOW.special.dayMult : (env.show ? Z.SHOW.dayMult : 1);
+    return Z.BASE_VISITORS * Z.DOW[env.dow] * env.weatherMult * repMult(st) * shopLv(st).foot * (0.5 + 0.5 * machineVariety(st)) * eyeCatch(st) * showMult;
   }
+  function forecast(st) { return Math.round(expectedVisitors(st, st.env || startOfDay(st))); }
   // 초대형 인형을 채운 기계가 있으면 지나가던 사람이 들어온다(기계당 +8%, 최대 +16%)
   function eyeCatch(st) {
     let n = 0;
-    st.machines.forEach((m) => { Object.keys(m.load).forEach((id) => { if (m.load[id].qty > 0 && doll(id).size === 'XL') n++; }); });
+    st.machines.forEach((m) => { loadedIds(m).forEach((id) => { if (doll(id).size === 'XL') n++; }); });
     return 1 + Math.min(n, 2) * 0.08;
   }
   // 기계/인형이 다양할수록(최대 1) 손님이 많이 들어온다
   function machineVariety(st) {
     const types = {}, dolls = {};
-    st.machines.forEach((m) => { if (loadQty(m) > 0) { types[m.type] = 1; Object.keys(m.load).forEach((id) => { if (m.load[id].qty > 0) dolls[id] = 1; }); } });
+    st.machines.forEach((m) => { loadedIds(m).forEach((id) => { types[m.type] = 1; dolls[id] = 1; }); });
     return clamp((Object.keys(dolls).length / 8) * 0.7 + (Object.keys(types).length / 3) * 0.3, 0.15, 1);
   }
 
-  // ---------- 하루 시뮬레이션 ----------
-  function runDay(st, opts) {
+  // ---------- 하루 영업 ----------
+  // mode: 'manual'(화면에서 act로 처리) / 'bot'(직접 운영 검증용) / 'staff'(건너뛴 날의 직원) / 'none'(방치)
+  function openDay(st, opts) {
     opts = opts || {};
+    const mode = opts.mode || 'manual';
+    const delay = mode === 'manual' ? Infinity : Z.RESPOND[mode];
     const env = st.env || startOfDay(st);
     const rng = makeRng(st.seed * 1000003 + st.day * 17 + 3);
-    const respond = opts.respond !== false;
-    const fix = respond ? Z.RESPOND : Z.AUTO;
-    const log = opts.log ? [] : null;
-    const ev = (t, type, o) => { if (log) log.push(Object.assign({ t, type }, o)); };
+    let events = [];
+    const ev = (type, o) => { events.push(Object.assign({ t, type }, o)); };
 
-    const show = env.show;
-    const hw = Z.HOUR_W, hwSum = hw.reduce((a, b) => a + b, 0);
-    const visitorsToday = expectedVisitors(st, env) * (show ? 1 + (Z.SHOW.mult - 1) * 0.35 : 1); // 공연일은 저녁에 몰린다
     const R = {
-      day: st.day, weather: env.weather, show, expected: Math.round(visitorsToday),
-      visitors: 0, players: 0, plays: 0, wins: 0, balk: { nothing: 0, budget: 0, queue: 0, empty: 0 }, claims: 0,
-      revenue: 0, payout: 0, power: 0, repair: 0, rent: 0, upkeep: 0, satSum: 0,
+      day: st.day, weather: env.weather, show: env.show, special: env.special,
+      visitors: 0, players: 0, plays: 0, wins: 0, claims: 0, dirty: 0,
+      balk: { nothing: 0, budget: 0, queue: 0, empty: 0, exchange: 0 }, missed: {},
+      revenue: 0, payout: 0, power: 0, repair: 0, rent: 0, upkeep: 0, wage: 0, satSum: 0,
+      tasks: { refill: 0, clean: 0, exchange: 0, repair: 0 },
       byMachine: [], byType: {}, hourly: new Array(Z.CLOSE - Z.OPEN).fill(0),
     };
     custTypes.forEach((c) => { R.byType[c.id] = { visitors: 0, plays: 0, revenue: 0 }; });
+    DATA.TASTES.forEach((x) => { R.missed[x] = 0; });
 
-    // 기계 런타임 준비
     const mrt = st.machines.map((m) => {
       const def = mdef(m);
-      const pb = clamp(Z.BREAK_BASE + m.age * Z.BREAK_AGE, 0, Z.BREAK_MAX);
+      const pb = clamp(Z.BREAK_BASE + m.age * Z.BREAK_AGE, 0, Z.BREAK_MAX) * (m.mods.durable ? Z.DURABLE_MULT : 1);
       const brk = rng() < pb ? Math.floor(rng() * (TICKS - 60)) + 30 : -1;
-      return { m, def, queue: [], acc: 0, down: false, downUntil: -1, breakAt: brk, refillAt: -1, plays: 0, wins: 0, rev: 0, payout: 0, downMin: 0, emptyMin: 0, repair: 0 };
+      return { m, def, queue: [], acc: 0, down: false, brokeAt: -1, breakAt: brk, refillWait: 0, plays: 0, wins: 0, rev: 0, payout: 0, downMin: 0, emptyMin: 0, repair: 0 };
     });
-    const hourMult = (h) => {
-      let x = hw[h - Z.OPEN];
-      if (show && h >= Z.SHOW.from && h < Z.SHOW.to) x *= Z.SHOW.mult;
-      return x;
-    };
-    // 공연일 가중치를 반영해 총합이 visitorsToday가 되도록 정규화
+    const byId = {};
+    mrt.forEach((r) => { byId[r.m.id] = r; });
+
+    const showFrom = Z.SHOW.from, showTo = Z.SHOW.to;
+    const showHour = env.special ? Z.SHOW.special.mult : (env.show ? Z.SHOW.mult : 1);
+    const hourMult = (h) => Z.HOUR_W[h - Z.OPEN] * (h >= showFrom && h < showTo ? showHour : 1);
+    const visitorsToday = expectedVisitors(st, env);
     let wsum = 0; for (let h = Z.OPEN; h < Z.CLOSE; h++) wsum += hourMult(h);
+    R.expected = Math.round(visitorsToday);
 
-    let cid = 0;
-    const customers = [];
+    let t = 0, cid = 0, litter = 0, report = null;
+    let tasks = [];          // 처리할 일: {type, m(기계 번호 또는 null), t(생긴 시각)}
+    let waiting = [];        // 환전을 기다리는 손님
 
-    function pickCustomerType(h) {
-      const dow = env.dow, weekend = dow >= 5;
-      const ws = custTypes.map((c) => {
-        let w = c.weight;
-        const tm = c.time;
-        const inH = h >= tm.hours[0] && h < tm.hours[1];
-        w *= inH ? tm.mult : tm.off;
-        if (weekend) w *= tm.weekend;
-        if (show && tm.show) w *= tm.show;
-        return w;
-      });
-      return rng.pickW(custTypes, ws);
+    const findTask = (type, mid) => tasks.find((k) => k.type === type && k.m === mid);
+    function addTask(type, mid) {
+      if (findTask(type, mid)) return;
+      tasks.push({ type, m: mid, t });
+      R.tasks[type]++;
+      ev('task', { task: type, m: mid });
+    }
+    const dropTask = (type, mid) => { tasks = tasks.filter((k) => !(k.type === type && k.m === mid)); };
+
+    // 플레이어(또는 직원) 조작
+    function act(type, mid, costMult) {
+      const k = findTask(type, mid == null ? null : mid);
+      if (type === 'refill') {
+        const r = byId[mid];
+        if (!r) return false;
+        const n = refill(st, r.m);
+        dropTask(type, mid);
+        if (!n) { r.refillWait = t + 60; return false; } // 창고에 채울 인형이 없다
+        ev('refill', { m: mid, n });
+        return true;
+      }
+      if (!k) return false;
+      if (type === 'clean') { litter = 0; }
+      else if (type === 'exchange') { waiting.forEach((c) => join(c)); waiting = []; }
+      else if (type === 'repair') {
+        const r = byId[mid];
+        r.down = false; r.repair += Math.round(r.def.repair * (costMult || 1));
+        ev('repaired', { m: mid });
+      }
+      dropTask(type, k.m);
+      ev('done', { task: type, m: k.m });
+      return true;
     }
 
+    function pickCategory(h) {
+      const weekend = env.dow >= 5;
+      const list = custTypes.filter((c) => c.rank <= st.rank);
+      const ws = list.map((c) => {
+        const tm = c.time;
+        let w = c.weight * (h >= tm.hours[0] && h < tm.hours[1] ? tm.mult : tm.off);
+        if (weekend) w *= tm.weekend;
+        if (env.show || env.special) w *= tm.show * (env.special && tm.show > 1 ? 1.4 : 1);
+        if (c.id === 'kpop' && st.equip.globalpay) w *= Z.GLOBALPAY_KPOP;
+        return w;
+      });
+      return rng.pickW(list, ws);
+    }
+    function pickTastes(cat) {
+      const list = Object.keys(cat.tastes);
+      const ws = list.map((x) => cat.tastes[x] * (x === st.trend.taste ? Z.TREND.demand : 1));
+      const out = [rng.pickW(list, ws)];
+      if (list.length > 1 && rng() < Z.CUSTOMER.TWO_TASTES) {
+        const rest = list.filter((x) => x !== out[0]);
+        out.push(rng.pickW(rest, rest.map((x) => ws[list.indexOf(x)])));
+      }
+      return out;
+    }
+
+    const dollAppeal = (c, d, m) => Z.MATCH.appeal[matchCount(c.tastes, d)] * (hasTrend(st, d) ? Z.TREND.appeal : 1) * (mdef(m).sizeAppeal[d.size] || 1);
+
     function chooseTarget(c) {
-      let best = 0; const opts2 = [];
+      let best = 0, bestMatch = 0; const cand = []; const seen = {};
       mrt.forEach((r) => {
-        if (r.down) return;
-        const qlen = r.queue.length;
-        const qpen = 1 / (1 + 0.12 * qlen);
-        const pf = clamp(r.def.ref / r.m.price, 0.5, 1.8);
-        Object.keys(r.m.load).forEach((id) => {
-          if (r.m.load[id].qty <= 0) return;
-          const sc = appeal(st, c.ct, doll(id), r.m) * pf * qpen;
-          opts2.push({ r, id, sc });
+        const pf = clamp(r.def.ref / r.m.price, 0.5, 1.8), qpen = 1 / (1 + 0.12 * r.queue.length);
+        loadedIds(r.m).forEach((id) => {
+          const d = doll(id);
+          d.taste.forEach((x) => { seen[x] = 1; });
+          if (r.down) return;
+          const sc = dollAppeal(c, d, r.m) * r.def.appeal * pf * qpen;
+          cand.push({ r, id, sc });
+          bestMatch = Math.max(bestMatch, matchCount(c.tastes, d));
           if (sc > best) best = sc;
         });
       });
-      if (!opts2.length) return { why: 'nothing' };
-      const pPlay = Math.pow(best, 2) / (Math.pow(best, 2) + Math.pow(Z.CONV_K, 2));
-      if (rng() > pPlay) return { why: 'nothing' };
-      const pick = rng.pickW(opts2, opts2.map((o) => Math.pow(o.sc, 2)));
-      return { r: pick.r, id: pick.id };
+      c.tastes.forEach((x) => { if (!seen[x]) R.missed[x]++; }); // 원했지만 가게에 없던 취향
+      if (!cand.length) return null;
+      if (bestMatch === 0) {
+        if (rng() < Z.MATCH.leave) return null;
+        c.maxPlays = 1 + Math.floor(rng() * Z.MATCH.noneMaxPlays);
+      } else if (rng() > (best * best) / (best * best + Z.CONV_K * Z.CONV_K)) return null;
+      return rng.pickW(cand, cand.map((o) => o.sc * o.sc));
     }
 
-    function leave(c, t, why) {
-      c.left = true;
-      if (c.plays > 0) {
-        R.players++;
-        let sat = c.sat;
-        if (why === 'frustrated') sat -= 0.1;
-        c.sat = clamp(sat, 0, 1);
-        R.satSum += c.sat;
-        if (c.sat < 0.2 && rng() < 0.35) { R.claims++; ev(t, 'claim', { c: c.id, type: c.ct.id }); }
+    function join(c) { c.waitFrom = t; c.target.queue.push(c); }
+
+    function leave(c, why) {
+      if (c.plays === 0) { if (R.balk[why] != null) R.balk[why]++; ev('balk', { c: c.id, why }); return; }
+      R.players++;
+      if (why === 'frustrated') c.sat -= 0.1;
+      c.sat = clamp(c.sat, 0, 1);
+      R.satSum += c.sat;
+      if (c.sat < 0.2 && rng() < 0.35) { R.claims++; ev('claim', { c: c.id }); }
+      if (rng() < Z.LITTER.chance * (st.equip.robot ? Z.LITTER.robotKeep : 1)) {
+        litter++;
+        if (litter >= Z.LITTER.task * (st.equip.bin ? Z.LITTER.binMult : 1)) addTask('clean', null);
       }
-      ev(t, 'leave', { c: c.id, why, plays: c.plays, wins: c.wins, spent: c.spent });
+      ev('leave', { c: c.id, why, plays: c.plays, wins: c.wins, spent: c.spent });
     }
 
-    function doPlay(r, c, t) {
+    function doPlay(r, c) {
       const m = r.m;
       // 원하던 인형이 없으면 남은 인형 중에서 다시 고른다
       if (!m.load[c.doll] || m.load[c.doll].qty <= 0) {
-        const ids = Object.keys(m.load).filter((id) => m.load[id].qty > 0);
-        if (!ids.length) { R.balk.empty++; ev(t, 'empty', { m: m.id, c: c.id }); leave(c, t, 'empty'); return; }
-        c.doll = rng.pickW(ids, ids.map((id) => Math.pow(appeal(st, c.ct, doll(id), m), 2)));
+        const ids = loadedIds(m);
+        if (!ids.length) { leave(c, 'empty'); return; }
+        c.doll = rng.pickW(ids, ids.map((id) => Math.pow(dollAppeal(c, doll(id), m), 2)));
       }
-      const d = doll(c.doll);
-      m.price; // 가격은 기계 설정값
+      const d = doll(c.doll), match = matchCount(c.tastes, d);
+      // 인기 인형(취향에 맞고, 유행이거나 두 취향이 모두 맞거나 희귀)은 어려워도 도전한다
+      const popular = match > 0 && (match > 1 || hasTrend(st, d) || d.taste.indexOf('희귀') >= 0);
       c.budget -= m.price; c.spent += m.price; c.plays++;
       R.plays++; R.revenue += m.price; r.plays++; r.rev += m.price;
-      R.byType[c.ct.id].plays++; R.byType[c.ct.id].revenue += m.price;
-      R.hourly[Math.floor(t / 60)] += m.price;
-      let won = false, near = false;
-      const p = grabProb(st, m, d, c.ct, env);
-      for (let a = 0; a < r.def.attempts; a++) {
-        if (!m.load[c.doll] || m.load[c.doll].qty <= 0) break;
-        if (rng() < p) {
-          won = true; c.wins++; R.wins++; r.wins++;
-          const l = m.load[c.doll];
-          R.payout += l.cost; r.payout += l.cost;
-          l.qty--; if (l.qty <= 0) delete m.load[c.doll];
-          ev(t, 'win', { c: c.id, m: m.id, doll: d.id, type: c.ct.id });
-        } else if (rng() < 0.45) near = true;
+      R.byType[c.cat.id].plays++; R.byType[c.cat.id].revenue += m.price;
+      R.hourly[Math.min(R.hourly.length - 1, Math.floor(t / 60))] += m.price;
+      const won = rng() < grabProb(m, d, c.skill);
+      const near = !won && rng() < 0.45;
+      if (won) {
+        c.wins++; R.wins++; r.wins++;
+        const l = m.load[c.doll];
+        R.payout += l.cost; r.payout += l.cost;
+        l.qty--; if (l.qty <= 0) delete m.load[c.doll];
+        ev('win', { c: c.id, m: m.id, doll: d.id, cat: c.cat.id });
+        c.sat += 0.33 + match * Z.MATCH.satWin; c.fails = 0;
+      } else {
+        ev('play', { c: c.id, m: m.id, near, cat: c.cat.id });
+        const harsh = popular ? 0.6 : 1 + (m.difficulty - 3) * 0.3; // 평범한 인형은 어려울수록 불만이 크다
+        c.sat += 0.03 - (near ? 0.04 : 0.07) * harsh; c.fails++;
       }
-      if (!won) ev(t, 'play', { c: c.id, m: m.id, near, type: c.ct.id });
-      // 만족도·계속 여부
-      c.sat += 0.03; // 해 보는 재미
-      if (won) { c.sat += 0.3 + (d.tier !== 'normal' ? 0.1 : 0); c.fails = 0; }
-      else { c.sat -= near ? 0.02 : 0.045; c.fails++; }
+      const bonus = (match > 1 ? Z.MATCH.extraTry : 0) + (popular ? 0.06 : 0);
       let cont;
-      if (c.budget < m.price) cont = false;
-      else if (won) cont = rng() < c.ct.win;
-      else cont = rng() < clamp(1 - c.fails / (c.ct.patience + 1) + (near ? 0.15 : 0), 0, 0.95);
-      if (!cont) { leave(c, t, c.budget < m.price ? 'budget' : (won ? 'happy' : 'frustrated')); return; }
-      // 계속: 다시 줄 끝에 선다(줄이 없으면 바로 이어서 한다)
-      c.waitFrom = t; r.queue.push(c);
+      if (c.budget < m.price || c.plays >= c.maxPlays) cont = false;
+      else if (won) cont = rng() < Z.CUSTOMER.win + bonus;
+      else cont = rng() < clamp(1 - c.fails / (c.patience + 1) + (near ? 0.15 : 0) + bonus, 0, 0.95);
+      if (!cont) { leave(c, c.budget < m.price ? 'budget' : (won ? 'happy' : 'frustrated')); return; }
+      join(c); // 계속: 다시 줄 끝에 선다(줄이 없으면 바로 이어서 한다)
     }
 
-    // ---- 틱 루프 ----
-    for (let t = 0; t < TICKS; t++) {
+    function arrive(h) {
+      const cat = pickCategory(h), C = Z.CUSTOMER;
+      const c = {
+        id: ++cid, cat, tastes: pickTastes(cat),
+        budget: Math.max(500, Math.round(C.BUDGET_AVG * Math.exp(rng.normal() * C.BUDGET_SPREAD) / 100) * 100),
+        patience: Math.round(rng.range(C.patience)), wait: rng.range(C.wait), skill: rng.range(C.skill),
+        sat: 0.55, fails: 0, plays: 0, wins: 0, spent: 0, maxPlays: 999, waitFrom: t,
+      };
+      R.visitors++; R.byType[cat.id].visitors++;
+      ev('arrive', { c: c.id, cat: cat.id, tastes: c.tastes });
+      if (findTask('clean', null)) { c.sat -= Z.LITTER.sat; R.dirty++; }
+      const tgt = chooseTarget(c);
+      if (!tgt) { leave(c, 'nothing'); return; }
+      if (c.budget < tgt.r.m.price) { leave(c, 'budget'); return; }
+      c.doll = tgt.id; c.target = tgt.r;
+      // 환전이 필요한 손님은 처리해 줄 때까지 기다린다
+      let ex = Z.EXCHANGE.chance * (st.equip.exchanger ? Z.EXCHANGE.exchangerKeep : 1);
+      if (st.equip.globalpay && cat.id === 'kpop') ex = 0;
+      if (rng() < ex) { waiting.push(c); addTask('exchange', null); return; }
+      join(c);
+    }
+
+    function tick() {
       const h = Z.OPEN + Math.floor(t / 60);
-      // 고장·수리·보충
       mrt.forEach((r) => {
-        if (r.breakAt === t) { r.down = true; r.downUntil = t + fix.delay; r.repair = Math.round(r.def.repair * fix.cost); ev(t, 'breakdown', { m: r.m.id }); }
-        if (r.down && t >= r.downUntil) { r.down = false; ev(t, 'repaired', { m: r.m.id }); }
+        if (r.breakAt === t) { r.down = true; r.brokeAt = t; addTask('repair', r.m.id); ev('breakdown', { m: r.m.id }); }
+        if (r.down && t - r.brokeAt >= Z.TECHNICIAN.delay) act('repair', r.m.id, Z.TECHNICIAN.cost); // 오래 두면 기사를 부른다
         if (r.down) r.downMin++;
-        const used = slotsUsed(r.m), cap = r.def.slots;
+        const used = slotsUsed(r.m);
         if (used === 0) r.emptyMin++;
-        if (r.refillAt < 0 && used / cap < 0.25 && opts.refill !== false) r.refillAt = t + Z.REFILL_DELAY;
-        if (r.refillAt >= 0 && t >= r.refillAt) {
-          r.refillAt = -1;
-          const n = refill(st, r.m);
-          if (n) ev(t, 'refill', { m: r.m.id, n });
+        if (used <= slotsOf(r.m) * Z.REFILL_AT && t >= r.refillWait) {
+          if (Object.keys(st.stock).some((id) => canHold(r.m, doll(id)))) addTask('refill', r.m.id);
         }
       });
-      // 도착
-      const lam = visitorsToday * (hourMult(h) / wsum) / 60;
-      const n = rng.poisson(lam);
-      for (let i = 0; i < n; i++) {
-        const ct = pickCustomerType(h);
-        const c = { id: ++cid, ct, budget: Math.max(500, Math.round(ct.budget * Math.exp(rng.normal() * 0.35) / 100) * 100), sat: 0.55, fails: 0, plays: 0, wins: 0, spent: 0, arrive: t, waitFrom: t, left: false };
-        R.visitors++; R.byType[ct.id].visitors++;
-        ev(t, 'arrive', { c: c.id, type: ct.id, budget: c.budget });
-        const tgt = chooseTarget(c);
-        if (!tgt.r) { R.balk.nothing++; ev(t, 'balk', { c: c.id, why: 'nothing' }); c.left = true; continue; }
-        if (c.budget < tgt.r.m.price) { R.balk.budget++; ev(t, 'balk', { c: c.id, why: 'budget' }); c.left = true; continue; }
-        c.doll = tgt.id; c.target = tgt.r;
-        tgt.r.queue.push(c);
-        customers.push(c);
-      }
-      // 서비스
+      // 자동 처리(직원·검증용)
+      tasks.slice().forEach((k) => { if (t - k.t >= delay) act(k.type, k.m); });
+      const n = rng.poisson(visitorsToday * (hourMult(h) / wsum) / 60);
+      for (let i = 0; i < n; i++) arrive(h);
+      // 환전을 기다리다 나가는 손님
+      waiting = waiting.filter((c) => { if (t - c.waitFrom > Z.EXCHANGE.wait) { leave(c, 'exchange'); return false; } return true; });
+      if (!waiting.length) dropTask('exchange', null);
+      // 기계 이용
       mrt.forEach((r) => {
-        if (r.down) { r.queue.forEach((c) => { c.waitFrom = Math.min(c.waitFrom, t); }); }
+        if (r.down) r.queue.forEach((c) => { c.waitFrom = Math.min(c.waitFrom, t); });
         else {
           r.acc += 60 / r.def.playSec;
-          while (r.acc >= 1 && r.queue.length) { const c = r.queue.shift(); r.acc -= 1; doPlay(r, c, t); }
+          while (r.acc >= 1 && r.queue.length) { const c = r.queue.shift(); r.acc -= 1; doPlay(r, c); }
           if (!r.queue.length) r.acc = Math.min(r.acc, 1);
         }
-        // 기다리다 지친 손님
-        r.queue = r.queue.filter((c) => {
-          if (t - c.waitFrom > c.ct.wait) { if (c.plays === 0) { R.balk.queue++; ev(t, 'balk', { c: c.id, why: 'queue' }); c.left = true; } else leave(c, t, 'queue'); return false; }
-          return true;
-        });
+        r.queue = r.queue.filter((c) => { if (t - c.waitFrom > c.wait) { leave(c, 'queue'); return false; } return true; });
       });
+      t++;
     }
-    // 마감: 남은 손님 퇴장
-    mrt.forEach((r) => { r.queue.forEach((c) => { if (c.plays === 0) { R.balk.queue++; c.left = true; } else leave(c, TICKS, 'closing'); }); r.queue = []; });
 
-    // ---- 정산 ----
-    R.rent = Math.round(shopLv(st).rent / 30);
-    R.upkeep = whLv(st).upkeep;
-    mrt.forEach((r) => {
-      const pw = r.def.power; R.power += pw;
-      R.repair += r.repair;
-      R.byMachine.push({ id: r.m.id, type: r.m.type, plays: r.plays, wins: r.wins, revenue: r.rev, payout: Math.round(r.payout), downMin: r.downMin, emptyMin: r.emptyMin, repair: r.repair });
-      r.m.age++;
-    });
-    R.payout = Math.round(R.payout);
-    R.cost = R.payout + R.power + R.repair + R.rent + R.upkeep;
-    R.profit = R.revenue - R.cost;                                   // 손익(인형은 뽑혀 나간 원가만)
-    R.cash = R.revenue - (R.power + R.repair + R.rent + R.upkeep);   // 오늘 현금 증감(인형 매입은 발주할 때 이미 나감)
-    st.money += R.cash;
-    st.totalRevenue += R.revenue;
-    R.avgSat = R.players ? R.satSum / R.players : 0.5;
-    // 평판·인기도
-    const volume = Math.min(1, R.players / 80);
-    const repDelta = (R.avgSat - 0.5) * 6 * volume - R.claims * 0.4 - (R.visitors ? (R.balk.queue + R.balk.empty) / R.visitors * 3 : 0);
-    st.reputation = clamp(st.reputation + repDelta, 0, 100);
-    R.repDelta = repDelta; R.rep = st.reputation;
-    const dayScore = (R.revenue / 20000) * (0.5 + R.avgSat) * (0.6 + st.reputation / 100);
-    st.popularity = st.popularity * 0.97 + dayScore;
-    R.popularity = st.popularity;
-    // 랭크
-    st.avgRev = st.avgRev == null ? R.revenue : st.avgRev * 0.9 + R.revenue * 0.1; // 최근 평균 일매출
-    while (st.rank < Z.RANK_POP.length && st.popularity >= Z.RANK_POP[st.rank] && st.avgRev >= Z.RANK_REV[st.rank]) { st.rank++; R.rankUp = st.rank; }
-    if (st.money < 0) st.bankrupt = true;
-    st.history.push({ day: R.day, revenue: R.revenue, profit: R.profit, visitors: R.visitors, rep: Math.round(st.reputation), money: st.money });
-    if (st.history.length > 365) st.history.shift();
+    // 영업을 n분 진행하고 그동안의 사건을 돌려준다.
+    function step(n) {
+      events = [];
+      for (let i = 0; i < (n || 1) && t < TICKS; i++) tick();
+      return events;
+    }
+
+    // 마감과 정산(남은 시간이 있으면 마저 돌린다)
+    function close() {
+      if (report) return report;
+      while (t < TICKS) step(60);
+      waiting.forEach((c) => leave(c, 'queue')); waiting = [];
+      mrt.forEach((r) => { r.queue.forEach((c) => leave(c, c.plays ? 'closing' : 'queue')); r.queue = []; });
+      R.rent = Math.round(shopLv(st).rent / 30);
+      R.upkeep = whLv(st).upkeep;
+      R.wage = st.staff ? Z.STAFF.wage : 0;
+      mrt.forEach((r) => {
+        R.power += r.def.power;
+        R.repair += r.repair;
+        R.byMachine.push({ id: r.m.id, type: r.m.type, plays: r.plays, wins: r.wins, revenue: r.rev, payout: Math.round(r.payout), downMin: r.downMin, emptyMin: r.emptyMin, repair: r.repair });
+        r.m.age++;
+      });
+      R.payout = Math.round(R.payout);
+      const fixed = R.power + R.repair + R.rent + R.upkeep + R.wage;
+      R.cost = R.payout + fixed;
+      R.profit = R.revenue - R.cost;   // 손익(인형은 뽑혀 나간 원가만)
+      R.cash = R.revenue - fixed;      // 오늘 현금 증감(인형 매입은 발주할 때 이미 나감)
+      st.money += R.cash;
+      st.totalRevenue += R.revenue;
+      R.avgSat = R.players ? R.satSum / R.players : 0.5;
+      // 평판
+      const volume = Math.min(1, R.players / 80);
+      const lost = R.visitors ? (R.balk.queue + R.balk.empty + R.balk.exchange) / R.visitors : 0;
+      R.repDelta = (R.avgSat - 0.5) * 6 * volume - R.claims * 0.4 - lost * 3 - (R.visitors ? R.dirty / R.visitors * 2 : 0);
+      st.reputation = clamp(st.reputation + R.repDelta, 0, 100);
+      R.rep = st.reputation;
+      // 인기도: 오르내린 원인을 나눠 둔다(정산 화면에 보여 준다)
+      const P = Z.POP, base = (R.revenue / P.REVENUE) * (0.6 + st.reputation / 100);
+      R.popReasons = {
+        sales: base * 0.5,
+        satisfaction: base * R.avgSat,
+        soldOut: -R.balk.empty * P.PENALTY,
+        exchange: -R.balk.exchange * P.PENALTY,
+        dirty: -R.dirty * P.PENALTY * 0.3,
+        claims: -R.claims * P.PENALTY * 3,
+        fade: -st.popularity * (1 - P.KEEP),
+      };
+      const before = st.popularity;
+      st.popularity = Math.max(0, before + Object.keys(R.popReasons).reduce((s, k) => s + R.popReasons[k], 0));
+      R.popularity = st.popularity;
+      // 랭크: 인기도와 최근 평균 일매출이 모두 필요하다
+      st.avgRev = st.avgRev == null ? R.revenue : st.avgRev * 0.8 + R.revenue * 0.2;
+      while (st.rank < Z.RANK_POP.length && st.popularity >= Z.RANK_POP[st.rank] && st.avgRev >= Z.RANK_REV[st.rank]) {
+        st.rank++; R.rankUp = st.rank; st.rankUpDay = st.day + 1;
+      }
+      if (!st.champion && st.rank >= Z.RANK_POP.length && st.popularity > rivalScore(0, st.day)) { st.champion = true; R.champion = true; }
+      if (st.money < 0) st.bankrupt = true;
+      st.history.push({ day: R.day, revenue: R.revenue, profit: R.profit, visitors: R.visitors, rep: Math.round(st.reputation), pop: Math.round(st.popularity), money: st.money });
+      if (st.history.length > 365) st.history.shift();
+      st.day++;
+      startOfDay(st);
+      report = R;
+      return R;
+    }
+
+    return {
+      step, close,
+      act: (type, mid) => { events = []; const ok = act(type, mid); return { ok, events }; },
+      tasks: () => tasks.map((k) => Object.assign({}, k, { waiting: k.type === 'exchange' ? waiting.length : undefined })),
+      time: () => t,
+      done: () => t >= TICKS,
+      result: R,
+    };
+  }
+
+  function runDay(st, opts) {
+    const day = openDay(st, Object.assign({ mode: 'bot' }, opts));
+    const log = opts && opts.log ? [] : null;
+    while (!day.done()) { const e = day.step(60); if (log) log.push(...e); }
+    const R = day.close();
     if (log) R.log = log;
-    st.day++;
-    startOfDay(st);
     return R;
   }
 
-  // ---------- 자동 준비(기본 운영 규칙): 계획 세우기 → 부족한 인형 발주 → 기계 채우기 ----------
-  // 플레이어가 직접 하는 준비 화면의 "추천"으로도 쓸 수 있다.
-  function dollScore(st, d) { // 손님 구성 평균 매력
-    let s = 0, w = 0;
-    custTypes.forEach((c) => {
-      let tagM = 1;
-      if (d.tags.length) { let x = 0; d.tags.forEach((t) => { x += c.tagW[t] || 1; }); tagM = x / d.tags.length; }
-      s += c.weight * tagM * (c.sizeW[d.size] || 1) * (d.tier === 'limited' ? 1.35 : (d.tier === 'rare' ? 1.2 : 1));
-      w += c.weight;
+  // ---------- 건너뛰기 ----------
+  function canSkip(st) {
+    if (!st.staff) return { ok: false, why: '직원을 고용하면 건너뛸 수 있어요' };
+    if (st.day === 1) return { ok: false, why: '첫 영업일이에요' };
+    if (st.day === st.rankUpDay) return { ok: false, why: '승급한 뒤 첫 영업일이에요' };
+    if (st.day === st.expandDay) return { ok: false, why: '가게를 넓힌 뒤 첫 영업일이에요' };
+    if (isSpecialDay(st.day)) return { ok: false, why: '특별 공연일이에요' };
+    if (!st.champion && st.rank >= Z.RANK_POP.length && st.popularity >= rivalScore(0, st.day) * Z.SKIP_NEAR_TOP) return { ok: false, why: '전국 1위에 도전하는 날이에요' };
+    return { ok: true };
+  }
+  function skipDay(st) {
+    const c = canSkip(st);
+    if (!c.ok) return c;
+    return { ok: true, result: runDay(st, { mode: 'staff' }) };
+  }
+
+  // ---------- 자동 준비(추천 운영): 진열 계획 → 부족한 인형 발주 → 기계 채우기 ----------
+  function tasteDemand(st) {
+    const out = {};
+    DATA.TASTES.forEach((x) => { out[x] = 0; });
+    custTypes.filter((c) => c.rank <= st.rank).forEach((c) => {
+      const sum = Object.keys(c.tastes).reduce((s, x) => s + c.tastes[x], 0);
+      Object.keys(c.tastes).forEach((x) => { out[x] += c.weight * (c.tastes[x] / sum) * (x === st.trend.taste ? Z.TREND.demand : 1); });
     });
-    return (s / w) * trendBoost(st, d);
+    return out;
   }
   function autoPrep(st, o) {
     o = o || {};
     const reserve = o.reserve != null ? o.reserve : 250000;
-    const avail = DATA.DOLLS.filter((d) => d.rank <= st.rank);
+    const demand = tasteDemand(st);
+    const avail = DATA.DOLLS.filter((d) => orderable(st, d) || st.stock[d.id]);
+    const covered = {}; // 가게 전체에서 취향이 몇 번 진열됐는지(골고루 갖추기)
     const need = {};
     st.machines.forEach((m) => {
       const def = mdef(m);
-      const cand = avail.filter((d) => canHold(m, d)).map((d) => ({ d, sc: dollScore(st, d) * (def.sizeAppeal[d.size] || 1) })).sort((a, b) => b.sc - a.sc);
-      // 크기별로 골고루: 점수 상위 5종
-      const top = cand.slice(0, 5);
-      const tsum = top.reduce((s, x) => s + x.sc, 0);
+      let cand = avail.filter((d) => canHold(m, d));
+      if (def.kind === 'timer') { // 초대형은 하나뿐이라 지금 가진 인형이 있으면 그중에서 고른다(비는 날이 없게)
+        const owned = cand.filter((d) => m.load[d.id] || st.stock[d.id]);
+        if (owned.length) cand = owned;
+      }
+      const top = [];
+      while (top.length < (def.kind === 'timer' ? 1 : 5) && top.length < cand.length) {
+        let best = null, bs = -1;
+        cand.forEach((d) => {
+          if (top.some((x) => x.d === d)) return;
+          let sc = d.taste.reduce((s, x) => s + demand[x] / (1 + (covered[x] || 0) * 0.6), 0);
+          if (m.load[d.id] || st.stock[d.id]) sc *= 1.35; // 이미 있는 인형을 먼저 쓴다(재고가 쌓이지 않게)
+          sc *= (def.sizeAppeal[d.size] || 1) * (hasTrend(st, d) ? 1.2 : 1) / Math.pow(d.cost / (def.grab ? 1 : 30000), def.grab ? 0.15 : 1);
+          if (sc > bs) { bs = sc; best = d; }
+        });
+        top.push({ d: best, sc: bs });
+        best.taste.forEach((x) => { covered[x] = (covered[x] || 0) + 1; });
+      }
+      // 칸을 점수 순서대로 돌아가며 채운다
       m.plan = {};
       let used = 0;
-      top.forEach((x) => {
-        const per = def.slotCost[x.d.size];
-        const q = Math.floor((def.slots * x.sc / tsum) / per);
-        if (q > 0) { m.plan[x.d.id] = q; used += q * per; }
-      });
-      // 남은 칸은 점수 순서대로 하나씩 더 채운다(칸이 비지 않게)
       for (let guard = 0; guard < 200; guard++) {
         let placed = false;
         for (const x of top) {
           const per = def.slotCost[x.d.size];
-          if (used + per <= def.slots) { m.plan[x.d.id] = (m.plan[x.d.id] || 0) + 1; used += per; placed = true; }
+          if (used + per <= slotsOf(m)) { m.plan[x.d.id] = (m.plan[x.d.id] || 0) + 1; used += per; placed = true; }
         }
         if (!placed) break;
       }
       Object.keys(m.plan).forEach((id) => { need[id] = (need[id] || 0) + m.plan[id]; });
     });
-    // 부족분 발주(보충 여유 50%)
-    const items = [];
-    let have = stockTotal(st) + incomingTotal(st);
-    const loaded = st.machines.reduce((n, m) => n + loadQty(m), 0);
-    Object.keys(need).forEach((id) => {
+    // 부족분 발주(하루 소진을 버틸 여유분: 일반 인형은 진열의 3배, 초대형은 5배)
+    let budget = st.money - reserve, cap = whLv(st).cap - stockTotal(st) - incomingTotal(st);
+    const buy = [];
+    const have = (id) => st.machines.reduce((n, m) => n + (m.load[id] ? m.load[id].qty : 0), 0) + (st.stock[id] ? st.stock[id].qty : 0);
+    const first = (id) => (doll(id).size === 'XL' ? -1 : have(id) / need[id]); // 초대형은 하나뿐이라 먼저 챙긴다
+    Object.keys(need).sort((a, b) => first(a) - first(b)).forEach((id) => { // 모자란 인형부터
+      const d = doll(id);
+      if (!orderable(st, d)) return;
       const inMachines = st.machines.reduce((n, m) => n + (m.load[id] ? m.load[id].qty : 0), 0);
       const inStock = st.stock[id] ? st.stock[id].qty : 0;
       const inc = st.incoming.filter((x) => x.id === id).reduce((n, x) => n + x.qty, 0);
-      const want = Math.ceil(need[id] * 2) - inMachines - inStock - inc;
-      if (want > 0) items.push({ id, qty: want });
-    });
-    // 예산: 여유 자금(reserve) 안에서만, 창고 용량 안에서만
-    let budget = st.money - reserve, cap = whLv(st).cap - have;
-    const buy = [];
-    items.forEach((it) => {
-      const q = Math.min(it.qty, cap);
+      const want = (d.size === 'XL' ? need[id] * 5 : need[id] * 3) - inMachines - inStock - inc;
+      const q = Math.min(want, cap);
       if (q <= 0) return;
-      const uc = unitCost(st, it.id, q);
+      const uc = unitCost(st, id, q);
       const aff = Math.min(q, Math.floor(budget / uc));
-      if (aff > 0) { buy.push({ id: it.id, qty: aff }); budget -= aff * uc; cap -= aff; }
+      if (aff > 0) { buy.push({ id, qty: aff }); budget -= aff * uc; cap -= aff; }
     });
     if (buy.length) order(st, buy);
+    st.machines.forEach((m) => unloadAll(st, m)); // 아침마다 계획대로 다시 진열한다
     st.machines.forEach((m) => refill(st, m));
     return { ordered: buy };
   }
@@ -527,7 +701,7 @@ const Sim = (function () {
     const N = Z.NATIONAL;
     const base = N.TOP * Math.pow(i + 1, -N.EXP);
     const grow = 1 - N.GROWTH + N.GROWTH * Math.min(1, day / N.GROWTH_DAYS) * 2; // 0.9 → 1.1
-    const wobble = 1 + 0.06 * Math.sin(day / 30 + i * 1.7);
+    const wobble = 1 + 0.02 * Math.sin(day / 30 + i * 1.7);
     return base * grow * wobble;
   }
   // 전국 순위표. 1랭크(단계 5)가 되어야 자세한 순위가 나온다. top = 상위 몇 명을 보여 줄지.
@@ -549,9 +723,9 @@ const Sim = (function () {
 
   return {
     rankNo, rankName, leaderboard,
-    newGame, startOfDay, runDay, forecast, autoPrep,
-    buyMachine, sellMachine, expandWarehouse, expandShop, order, unitCost,
+    newGame, startOfDay, openDay, runDay, canSkip, skipDay, forecast, autoPrep,
+    buyMachine, sellMachine, buyEquipment, expandWarehouse, expandShop, hireStaff, setOption, order, unitCost, orderable, nextSpecial,
     loadMachine, unloadAll, refill, addStock,
-    info: { slotsUsed, loadQty, freeSlots, footUsed, stockTotal, incomingTotal, canHold, grabProb: (st, m, d, ct) => grabProb(st, m, d, ct, st.env || {}), doll, TICKS },
+    info: { slotsOf, slotsUsed, loadQty, freeSlots, footUsed, stockTotal, incomingTotal, canHold, grabProb, doll, TICKS, isShowDay, isSpecialDay },
   };
 })();

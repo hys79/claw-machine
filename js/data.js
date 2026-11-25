@@ -188,82 +188,82 @@ DATA.ICON_SPEAKER = (function () {
 })();
 
 // ===== 시뮬레이션 데이터(초안) =====
-// 속성 태그(인형): 계열 / 분위기 / 등급·행사. 손님 선호와 유행이 태그로 맞물린다.
-DATA.TAGS = ['동물', '음식', '우주', '공룡', '날씨', '귀여움', '코믹', '시크', '희귀', '한정', '공연'];
+// 인형 태그는 크기(size)와 취향(taste) 두 가지. 손님도 같은 취향을 가진다.
+DATA.TASTES = ['동물', '귀여움', '음식', '코믹', '우주', '레트로', '희귀', '아이돌'];
 
-// 인형: size S/M/L, cost 도매 원가(원), tier normal/rare/limited, hard 0~1(집기 어려움), rank 해금 랭크
+// 인형: size S/M/L/XL, cost 도매 원가(원), taste 취향 태그, hard 0~1(집기 어려움),
+// rank 해금 단계(1=5랭크 … 5=1랭크), special: 특별 공연 한정(공연 전 일주일 동안만 발주). 아이돌 인형은 전부 가상 그룹이다.
 DATA.DOLLS = [
-  { id: 'chick', name: '꼬마 병아리', size: 'S', cost: 600, tier: 'normal', tags: ['동물', '귀여움'], hard: 0.0, rank: 1 },
-  { id: 'rocket', name: '콩알 로켓', size: 'S', cost: 700, tier: 'normal', tags: ['우주', '귀여움'], hard: 0.0, rank: 1 },
-  { id: 'breadduck', name: '식빵 오리', size: 'S', cost: 700, tier: 'normal', tags: ['음식', '동물', '코믹'], hard: 0.05, rank: 1 },
-  { id: 'cloudy', name: '뭉게 구름이', size: 'S', cost: 800, tier: 'normal', tags: ['날씨', '귀여움'], hard: 0.05, rank: 1 },
-  { id: 'roundbear', name: '동글 곰', size: 'M', cost: 2400, tier: 'normal', tags: ['동물', '귀여움'], hard: 0.1, rank: 1 },
-  { id: 'berrybunny', name: '딸기 토끼', size: 'M', cost: 2600, tier: 'normal', tags: ['동물', '음식', '귀여움'], hard: 0.1, rank: 1 },
-  { id: 'cooldino', name: '선글라스 공룡', size: 'M', cost: 2800, tier: 'normal', tags: ['공룡', '코믹', '시크'], hard: 0.15, rank: 1 },
-  { id: 'penguin', name: '펭귄 반장', size: 'M', cost: 2500, tier: 'normal', tags: ['동물', '코믹'], hard: 0.1, rank: 1 },
-  { id: 'spacecat', name: '우주냥', size: 'M', cost: 3000, tier: 'normal', tags: ['우주', '동물', '시크'], hard: 0.15, rank: 1 },
-  { id: 'bigbear', name: '뭉치 곰', size: 'L', cost: 7500, tier: 'normal', tags: ['동물', '귀여움'], hard: 0.1, rank: 1 },
-  { id: 'koala', name: '낮잠 코알라 쿠션', size: 'L', cost: 8500, tier: 'normal', tags: ['동물', '귀여움'], hard: 0.15, rank: 1 },
-  { id: 'bigdino', name: '대왕 공룡', size: 'L', cost: 9000, tier: 'normal', tags: ['공룡', '코믹'], hard: 0.2, rank: 1 },
-  { id: 'megabear', name: '거대 뭉치 곰', size: 'XL', cost: 28000, tier: 'normal', tags: ['동물', '귀여움'], hard: 0, rank: 1 },
-  { id: 'kingdino', name: '초대형 공룡 대왕', size: 'XL', cost: 34000, tier: 'normal', tags: ['공룡', '코믹'], hard: 0, rank: 2 },
-  { id: 'jumbocat', name: '점보 우주냥', size: 'XL', cost: 32000, tier: 'normal', tags: ['우주', '동물', '시크'], hard: 0, rank: 2 },
-  { id: 'arenajumbo', name: '아레나 응원 점보 곰', size: 'XL', cost: 42000, tier: 'limited', tags: ['공연', '동물', '한정'], hard: 0, rank: 3 },
-  { id: 'rainbowsheep', name: '무지개 양', size: 'M', cost: 4200, tier: 'rare', tags: ['동물', '귀여움', '희귀'], hard: 0.3, rank: 2 },
-  { id: 'moonrabbit', name: '달토끼 요정', size: 'M', cost: 4500, tier: 'rare', tags: ['우주', '동물', '시크', '희귀'], hard: 0.3, rank: 2 },
-  { id: 'cheerbear', name: '응원봉 곰', size: 'L', cost: 11000, tier: 'limited', tags: ['공연', '동물', '한정'], hard: 0.25, rank: 2 },
-  { id: 'goldpig', name: '황금 저금 돼지', size: 'M', cost: 6000, tier: 'limited', tags: ['동물', '코믹', '한정'], hard: 0.35, rank: 3 },
+  { id: 'chick', name: '꼬마 병아리', size: 'S', cost: 600, taste: ['동물', '귀여움'], hard: 0.0, rank: 1 },
+  { id: 'rocket', name: '콩알 로켓', size: 'S', cost: 700, taste: ['우주', '귀여움'], hard: 0.0, rank: 1 },
+  { id: 'breadduck', name: '식빵 오리', size: 'S', cost: 700, taste: ['음식', '코믹'], hard: 0.05, rank: 1 },
+  { id: 'oldrobot', name: '태엽 로봇', size: 'S', cost: 900, taste: ['레트로', '우주'], hard: 0.1, rank: 1 },
+  { id: 'lumikey', name: '루미나 미니 응원인형', size: 'S', cost: 1100, taste: ['아이돌', '귀여움'], hard: 0.05, rank: 2 },
+  { id: 'roundbear', name: '동글 곰', size: 'M', cost: 2400, taste: ['동물', '귀여움'], hard: 0.1, rank: 1 },
+  { id: 'berrybunny', name: '딸기 토끼', size: 'M', cost: 2600, taste: ['음식', '귀여움'], hard: 0.1, rank: 1 },
+  { id: 'penguin', name: '펭귄 반장', size: 'M', cost: 2500, taste: ['동물', '코믹'], hard: 0.1, rank: 1 },
+  { id: 'spacecat', name: '우주냥', size: 'M', cost: 3000, taste: ['우주', '동물'], hard: 0.15, rank: 1 },
+  { id: 'retrofrog', name: '옛날 개구리', size: 'M', cost: 3200, taste: ['레트로', '코믹'], hard: 0.15, rank: 1 },
+  { id: 'rainbowsheep', name: '무지개 양', size: 'M', cost: 4200, taste: ['희귀', '귀여움'], hard: 0.3, rank: 2 },
+  { id: 'moonrabbit', name: '달토끼 요정', size: 'M', cost: 4500, taste: ['희귀', '우주'], hard: 0.3, rank: 2 },
+  { id: 'goldpig', name: '황금 저금 돼지', size: 'M', cost: 5500, taste: ['희귀', '레트로'], hard: 0.3, rank: 3 },
+  { id: 'lumidol', name: '루미나 멤버 인형', size: 'M', cost: 3800, taste: ['아이돌', '귀여움'], hard: 0.15, rank: 2 },
+  { id: 'bigbear', name: '뭉치 곰', size: 'L', cost: 7500, taste: ['동물', '귀여움'], hard: 0.1, rank: 1 },
+  { id: 'bigburger', name: '왕 햄버거 쿠션', size: 'L', cost: 8000, taste: ['음식', '코믹'], hard: 0.15, rank: 1 },
+  { id: 'cheerbear', name: '루미나 응원봉 곰', size: 'L', cost: 10000, taste: ['아이돌', '동물'], hard: 0.2, rank: 2 },
+  { id: 'classicbear', name: '빈티지 태엽 곰', size: 'L', cost: 11000, taste: ['레트로', '희귀'], hard: 0.25, rank: 3 },
+  { id: 'stagebear', name: '특별 무대 응원 곰', size: 'M', cost: 4800, taste: ['아이돌', '희귀'], hard: 0.2, rank: 2, special: true },
+  { id: 'megabear', name: '거대 뭉치 곰', size: 'XL', cost: 28000, taste: ['동물', '귀여움'], hard: 0, rank: 3 },
+  { id: 'jumborobot', name: '초대형 태엽 로봇', size: 'XL', cost: 34000, taste: ['레트로', '희귀'], hard: 0, rank: 3 },
+  { id: 'jumboidol', name: '루미나 점보 마스코트', size: 'XL', cost: 36000, taste: ['아이돌', '귀여움'], hard: 0, rank: 3 },
 ];
 
-// 기계(여러 종류). sizes: 넣을 수 있는 인형 크기, slotCost: 크기별 차지하는 칸, grab: 크기별 한 번 집을 때 성공 확률(집게 힘 3단계 기준),
-// attempts: 한 판에 집을 수 있는 횟수, playSec: 한 판에 걸리는 시간(초), ref: 손님이 느끼는 기준 가격
+// 기계. sizes: 넣을 수 있는 인형 크기, slots/slotCost: 진열 칸, grab: 크기별 집기 성공 확률(난이도 3 기준),
+// playSec: 한 판 시간(초), ref: 손님이 느끼는 기준 가격, rank: 해금 단계(3 = 3랭크)
 DATA.MACHINES = {
   mini: {
     id: 'mini', name: '소형 뽑기 기계', rank: 1, price: 700000, footprint: 1, slots: 24, sizes: ['S', 'M'], slotCost: { S: 1, M: 3 },
-    power: 1200, repair: 30000, playSec: 55, attempts: 1, grab: { S: 0.22, M: 0.07 }, priceDef: 500, priceRange: [300, 1000], ref: 500, appeal: 0.9,
+    power: 1200, repair: 30000, playSec: 55, grab: { S: 0.22, M: 0.07 }, priceDef: 500, priceRange: [300, 1000], ref: 500, appeal: 0.9,
     sizeAppeal: { S: 1.0, M: 0.9 },
-    desc: '작고 저렴하다. 소형 인형 전용이고, 중형은 겨우 들어가며(칸을 많이 차지하고 잘 안 집힌다), 대형 인형은 들어가지 않는다.',
+    desc: '작고 저렴하다. 소형 인형에 알맞고, 중형은 겨우 들어가며(칸을 많이 차지하고 잘 안 집힌다), 대형 인형은 들어가지 않는다.',
   },
   standard: {
     id: 'standard', name: '일반 뽑기 기계', rank: 1, price: 1200000, footprint: 1, slots: 36, sizes: ['S', 'M', 'L'], slotCost: { S: 1, M: 2, L: 4 },
-    power: 2000, repair: 50000, playSec: 75, attempts: 1, grab: { S: 0.24, M: 0.13, L: 0.05 }, priceDef: 1000, priceRange: [500, 2000], ref: 1000, appeal: 1.0,
+    power: 2000, repair: 50000, playSec: 75, grab: { S: 0.26, M: 0.13, L: 0.045 }, priceDef: 1000, priceRange: [500, 2000], ref: 1000, appeal: 1.0,
     sizeAppeal: { S: 1.0, M: 1.0, L: 0.95 },
-    desc: '가장 무난한 기계. 모든 크기의 인형을 넣을 수 있다.',
+    desc: '가장 무난한 기계. 소형·중형·대형 인형을 넣을 수 있다.',
   },
   big: {
-    id: 'big', name: '대형 뽑기 기계', rank: 2, price: 2800000, footprint: 2, slots: 24, sizes: ['S', 'M', 'L'], slotCost: { S: 1, M: 2, L: 3 },
-    power: 3500, repair: 120000, playSec: 100, attempts: 1, grab: { S: 0.30, M: 0.17, L: 0.09 }, priceDef: 2000, priceRange: [1000, 4000], ref: 2000, appeal: 1.25,
+    id: 'big', name: '대형 뽑기 기계', rank: 3, price: 2800000, footprint: 2, slots: 24, sizes: ['S', 'M', 'L'], slotCost: { S: 1, M: 2, L: 3 },
+    power: 3500, repair: 120000, playSec: 100, grab: { S: 0.30, M: 0.20, L: 0.085 }, priceDef: 2000, priceRange: [1000, 4000], ref: 2000, appeal: 1.25,
     sizeAppeal: { S: 0.75, M: 1.0, L: 1.25 },
     desc: '점포 칸을 2개 차지하는 큰 기계. 대형 인형이 가장 잘 어울리고 눈에 띄지만 소형 인형은 휑해 보인다.',
   },
   timer: {
-    id: 'timer', name: '타이머 뽑기 기계', rank: 2, kind: 'timer', price: 1800000, footprint: 1, slots: 10, sizes: ['L', 'XL'], slotCost: { L: 3, XL: 5 },
-    power: 2500, repair: 80000, playSec: 45, attempts: 1,
-    target: 10, tolerance: [0.04, 0.025, 0.012, 0.008, 0.005], sigma: 0.32, // 목표 시간(초), 단계별 허용 오차(±초), 평균 손님의 버튼 오차(표준편차, 초)
-    grab: { L: 1, XL: 1 }, priceDef: 2500, priceRange: [1500, 5000], ref: 2500, appeal: 1.35, sizeAppeal: { L: 1.0, XL: 1.7 },
-    desc: '정확히 10.00초에 버튼을 눌러야 경품을 주는 기계. 보통 엄청 큰 인형을 넣어 이목을 끈다. 집게 힘 대신 허용 오차로 난이도를 정하고, 고수 손님이 특히 잘 맞춘다.',
+    id: 'timer', name: '타이머 뽑기 기계', rank: 3, kind: 'timer', price: 1800000, footprint: 1, slots: 1, sizes: ['XL'], slotCost: { XL: 1 },
+    power: 2500, repair: 80000, playSec: 45,
+    target: 10, tolerance: [0.03, 0.02, 0.012, 0.008, 0.005], sigma: 0.32, // 목표 시간(초), 난이도 1~5의 허용 오차(±초), 평균 손님의 버튼 오차(표준편차, 초)
+    priceDef: 2500, priceRange: [1500, 5000], ref: 2500, appeal: 1.35, sizeAppeal: { XL: 1.4 },
+    desc: '정확히 10.00초에 버튼을 눌러야 경품을 주는 기계. 초대형 인형 하나를 넣어 이목을 끈다. 난이도는 허용 오차로 정한다.',
   },
 };
 
-// 손님 유형. budget 평균 예산(원), patience 연속 실패 허용, wait 줄 서서 기다리는 한계(분), skill 집게 숙련 배수, win 성공 후 계속할 확률,
-// tagW/sizeW/machineW 선호 배수, time 시간대 가중
+// 손님 분류: 분류마다 다른 것은 선호 취향(tastes: 뽑힐 가중치)과 출몰 시간뿐이다. rank: 등장하는 단계.
 DATA.CUSTOMERS = [
-  { id: 'family', name: '가족 손님', weight: 1.0, budget: 6000, patience: 4, wait: 8, skill: 0.95, win: 0.4,
-    tagW: { 동물: 1.3, 귀여움: 1.4 }, sizeW: { S: 1.0, M: 1.2, L: 1.0, XL: 1.4 }, machineW: { mini: 1.1, standard: 1.1, big: 1.0, timer: 0.6 },
-    time: { hours: [11, 17], mult: 1.7, off: 0.6, weekend: 1.4 } },
-  { id: 'couple', name: '연인 손님', weight: 0.9, budget: 8000, patience: 5, wait: 10, skill: 1.0, win: 0.35,
-    tagW: { 귀여움: 1.3, 공연: 1.2 }, sizeW: { S: 0.7, M: 1.0, L: 1.6, XL: 1.8 }, machineW: { mini: 0.7, standard: 1.0, big: 1.4, timer: 0.9 },
-    time: { hours: [17, 22], mult: 1.7, off: 0.7, weekend: 1.1 } },
-  { id: 'student', name: '학생 손님', weight: 1.0, budget: 3500, patience: 3, wait: 6, skill: 1.0, win: 0.3,
-    tagW: { 코믹: 1.4, 한정: 1.4, 공룡: 1.2 }, sizeW: { S: 1.2, M: 1.0, L: 0.7 }, machineW: { mini: 1.4, standard: 1.0, big: 0.7, timer: 0.9 },
-    time: { hours: [15, 20], mult: 1.7, off: 0.5, weekend: 0.9 } },
-  { id: 'master', name: '인형뽑기 고수 손님', weight: 0.35, budget: 12000, patience: 8, wait: 15, skill: 1.35, win: 0.55,
-    tagW: { 희귀: 1.8, 한정: 1.6, 시크: 1.2 }, sizeW: { S: 0.8, M: 1.0, L: 1.2 }, machineW: { mini: 0.5, standard: 0.9, big: 1.1, timer: 1.7 },
-    time: { hours: [19, 22], mult: 1.6, off: 0.8, weekend: 1.3 } },
-  { id: 'tourist', name: '관광객 손님', weight: 0.5, budget: 8000, patience: 4, wait: 8, skill: 0.9, win: 0.4,
-    tagW: { 공연: 1.7, 한정: 1.4, 귀여움: 1.1 }, sizeW: { S: 1.0, M: 1.2, L: 1.1, XL: 1.4 }, machineW: { mini: 1.0, standard: 1.0, big: 1.0, timer: 1.0 },
-    time: { hours: [10, 22], mult: 1.0, off: 1.0, weekend: 1.3, show: 3.0 } },
-  { id: 'browser', name: '구경 손님', weight: 0.8, budget: 2000, patience: 2, wait: 4, skill: 0.9, win: 0.2,
-    tagW: {}, sizeW: { S: 1.0, M: 1.0, L: 0.8, XL: 1.3 }, machineW: { mini: 1.2, standard: 1.0, big: 0.9, timer: 0.8 },
-    time: { hours: [10, 22], mult: 1.0, off: 1.0, weekend: 1.0 } },
+  { id: 'normal', name: '일반', rank: 1, weight: 1.0, tastes: { 동물: 3, 귀여움: 3, 음식: 2, 코믹: 2, 우주: 1.5, 레트로: 0.3, 희귀: 0.3, 아이돌: 0.4 },
+    time: { hours: [12, 20], mult: 1.3, off: 0.8, weekend: 1.3, show: 1.0 } },
+  { id: 'mania', name: '마니아', rank: 1, weight: 0.3, tastes: { 희귀: 3, 레트로: 3, 우주: 0.6, 동물: 0.4 },
+    time: { hours: [19, 22], mult: 2.2, off: 0.5, weekend: 1.2, show: 0.8 } },
+  { id: 'kpop', name: 'K-pop 팬', rank: 2, weight: 0.3, tastes: { 아이돌: 5, 귀여움: 1.5, 희귀: 0.6 },
+    time: { hours: [13, 19], mult: 1.8, off: 0.6, weekend: 1.2, show: 3.0 } },
 ];
+
+// 설비(한 번 사면 영업 중 일이 덜 생긴다). rank: 해금 단계, perMachine: 기계 하나에 다는 개조
+DATA.EQUIPMENT = {
+  bin: { name: '대형 쓰레기통', rank: 1, price: 150000, desc: '청소할 일이 절반으로 준다.' },
+  exchanger: { name: '자동환전기', rank: 2, price: 600000, desc: '환전 요청이 크게 준다.' },
+  globalpay: { name: '해외결제 시스템', rank: 3, price: 500000, desc: 'K-pop 팬의 환전 요청이 없어지고, K-pop 팬이 더 온다.' },
+  robot: { name: '로봇 청소기', rank: 4, price: 1200000, desc: '청소할 일이 대부분 없어진다.' },
+  capacity: { name: '대용량 진열 개조', rank: 4, price: 300000, perMachine: true, desc: '진열 칸이 1.5배(타이머 기계 제외).' },
+  durable: { name: '내구성 개조', rank: 4, price: 250000, perMachine: true, desc: '고장이 크게 준다.' },
+};
