@@ -304,7 +304,7 @@ DATA.ACHIEVEMENTS = [
   { id: 'win100', group: '장사', name: '인형 100개', desc: '손님이 인형을 누적 100개 뽑는다', stat: 'wins', goal: 100, reward: { doll: 'goldchick' } },
   { id: 'win3000', group: '장사', name: '인형 3,000개', desc: '손님이 인형을 누적 3,000개 뽑는다', stat: 'wins', goal: 3000, reward: { money: 3000000 } },
   { id: 'total1', group: '장사', name: '누적 1억', desc: '누적 매출 1억 원', stat: 'totalRevenue', goal: 100000000, reward: { money: 5000000 } },
-  { id: 'fast', group: '운영', name: '번개 사장', desc: '직접 운영한 날, 할 일 5개 이상을 모두 15분(게임 시각) 안에 처리', stat: 'fastDays', goal: 1, reward: { money: 300000 } },
+  { id: 'fast', group: '운영', name: '번개 사장', desc: '직접 운영한 날, 할 일 5개 이상을 모두 30분(게임 시각) 안에 처리', stat: 'fastDays', goal: 1, reward: { money: 300000 } },
   { id: 'stocked', group: '운영', name: '품절 없는 일주일', desc: '빈 기계 때문에 돌아간 손님 없이 7일 연속 영업', stat: 'bestStockStreak', goal: 7, reward: { decor: 'arcadeset' } },
   { id: 'dolls12', group: '수집', name: '인형 수집가', desc: '서로 다른 인형 12종을 진열한다', stat: 'dollKinds', goal: 12, reward: { money: 500000 } },
   { id: 'dolls20', group: '수집', name: '인형 박사', desc: '서로 다른 인형 20종을 진열한다', stat: 'dollKinds', goal: 20, reward: { doll: 'arcadecat' } },

@@ -7,14 +7,12 @@ const Game = (function () {
   const WEATHER = { sunny: '맑음', cloudy: '흐림', rain: '비', snow: '눈' };
   const TASK = { refill: '보충', clean: '청소', exchange: '환전', repair: '수리' };
   const BALK = { nothing: '취향이 없네', budget: '돈이 모자라', queue: '줄이 길어', empty: '비었잖아', exchange: '환전이 안 돼' };
-  const MAX_ACTORS = 16;
 
   let st = null;          // 시뮬레이션 상태(State.data.sim)
   let phase = 'build';    // build | open | result
   let popup = null;       // null | shop | order | plan
   let sel = null;         // 선택한 것의 key(ShopView.things)
   let drag = null;        // 끌고 있는 것: {t, dx, dy, x, y, sx, sy, moved}
-  let boxes = [];         // 창고에서 기계로 날아가는 상자
   let toasts = [], toast = null; // 도전과제 알림
   let dayAch = [];
   let scope = 'one';      // 난이도·가격 적용 범위
@@ -23,7 +21,7 @@ const Game = (function () {
   let cart = {};
   let msg = null;         // {text, until}
   let day = null, snapshot = null, speed = 1, paused = false, acc = 0, last = null;
-  let actors = [], pops = [], today = null, result = null;
+  let pops = [], today = null, result = null;
   let clockNow = 0;
 
   const won = (n) => (Math.round(n) || 0).toLocaleString('ko-KR') + '원';
@@ -44,7 +42,7 @@ const Game = (function () {
   function achieve(list) {
     if (!list.length) return;
     list.forEach((a) => toasts.push(a));
-    ShopView.autoPlace(st); // 보상 소품을 빈 곳에 놓는다
+    if (phase !== 'open') ShopView.autoPlace(st); // 보상 소품을 빈 곳에 놓는다(영업 중에는 마감 뒤에: 손님 길이 바뀌지 않게)
   }
   const findThing = (key) => ShopView.things(st).find((t) => t.key === key);
   const selectedMachine = () => { const t = sel && findThing(sel); return t && t.kind === 'machine' ? t.ref : null; };
@@ -57,7 +55,7 @@ const Game = (function () {
     }
     st = Sim.upgradeState(d.sim);
     ShopView.autoPlace(st);
-    boxes = []; toasts = []; toast = null;
+    toasts = []; toast = null;
     phase = 'build'; popup = null; sel = null; drag = null; day = null; result = null; msg = null; last = null; cart = {};
     save();
   }
@@ -74,9 +72,10 @@ const Game = (function () {
     save();
     snapshot = JSON.stringify(st);
     day = Sim.openDay(st, { mode: 'manual' });
-    boxes = []; dayAch = [];
+    dayAch = [];
     phase = 'open'; popup = null; sel = null; speed = 1; paused = false; acc = 0; last = null;
-    actors = []; pops = []; today = { revenue: 0, visitors: 0, wins: 0 };
+    pops = []; today = { revenue: 0, visitors: 0, wins: 0 };
+    Actors.reset(st);
     Sound.sfx('doorbell');
   }
   function finishDay() {
@@ -95,32 +94,19 @@ const Game = (function () {
   function pop(x, y, text, color) { if (pops.length < 24) pops.push({ x, y, text, color, t: clockNow }); }
 
   function onEvents(events) {
-    const g = ShopView.geom(st.shopLevel), door = ShopView.doorPoint(g);
-    const find = (id) => actors.find((a) => a.id === id);
+    const g = ShopView.geom(st.shopLevel);
     const mach = (id) => st.machines.find((m) => m.id === id);
     events.forEach((e) => {
-      if (e.type === 'arrive') {
-        today.visitors++;
-        if (actors.length >= MAX_ACTORS) return; // 대표 손님만 그린다
-        const P = Cutscene.art.NPC_PALS;
-        const pal = P[(e.cat === 'mania' ? 1 : e.cat === 'kpop' ? 2 : 0) % P.length];
-        actors.push({ id: e.c, cat: e.cat, pal: e.cat === 'normal' ? P[e.c % P.length] : pal, x: door.x, y: door.y + 6, tx: door.x - 20 - (e.c % 5) * 22, ty: door.y - 14 - (e.c % 3) * 8, leaving: false, born: clockNow });
-      } else if (e.type === 'play' || e.type === 'win') {
-        const m = mach(e.m), a = find(e.c);
+      const a = Actors.onEvent(e);
+      if (e.type === 'arrive') today.visitors++;
+      else if (e.type === 'play' || e.type === 'win') {
+        const m = mach(e.m);
         if (!m) return;
         today.revenue += m.price;
-        if (e.type === 'win') today.wins++;
-        const p = ShopView.standPoint(g, m);
-        if (a) { a.tx = p.x + ((e.c % 3) - 1) * 12; a.ty = p.y; }
-        if (e.type === 'win') { pop(p.x, p.y - 60, '획득!', '#2f9e5b'); Sound.sfx('prize'); }
-      } else if (e.type === 'leave' || e.type === 'balk') {
-        const a = find(e.c);
-        if (!a) return;
-        a.wantLeave = true; // 바로 사라지지 않고, 자리에 가서 잠깐 머문 뒤 나간다
-        if (e.type === 'balk') pop(a.x, a.y - 40, BALK[e.why] || '…', C.alert);
-      } else if (e.type === 'refill') { // 창고 문에서 상자가 날아온다
-        const m = mach(e.m);
-        if (m) { const r = ShopView.rectOf(g, { kind: 'machine', w: ShopView.things(st).find((t) => t.ref === m).w }, m.pos); boxes.push({ x0: g.store.x + g.store.w / 2, y0: g.store.y + 36, x1: r.x + r.w / 2, y1: r.y + r.h / 2, t: clockNow }); }
+        if (e.type === 'win') { today.wins++; const p = ShopView.standPoint(g, m); pop(p.x, p.y - 60, '획득!', '#2f9e5b'); Sound.sfx('prize'); }
+      } else if (e.type === 'balk') {
+        if (a) pop(a.x, a.y - 40, BALK[e.why] || '…', C.alert);
+      } else if (e.type === 'refill') {
         if (e.subs && e.subs.length) say(Sim.info.doll(e.subs[0]).name + '(으)로 대신 채웠어요');
       } else if (e.type === 'task') {
         if (speed > 1) { speed = 1; say('할 일이 생겨 1배속으로 바꿨어요'); }
@@ -128,12 +114,20 @@ const Game = (function () {
       }
     });
   }
-  function doTask(k) {
-    const r = day.act(k.type, k.m);
-    if (r.ok) Sound.sfx(k.type === 'repair' ? 'hammer' : 'confirm');
-    else { Sound.sfx('buzz'); say('창고에 채울 인형이 없어요'); }
-    onEvents(r.events);
+  // 할 일을 누르면 주인공에게 맡긴다(직접 걸어가서 처리한다)
+  function order1(k) {
+    if (k.noStock) { Sound.sfx('buzz'); say('창고에 채울 인형이 없어요'); return; }
+    if (Actors.enqueue(k)) Sound.sfx('click');
   }
+  const hooks = {
+    sfx: (name) => Sound.sfx(name),
+    noStock: () => { Sound.sfx('buzz'); say('창고에 채울 인형이 없어요'); },
+    done: (r, j) => {
+      if (r.ok) Sound.sfx(j.type === 'repair' ? 'sparkle' : 'confirm');
+      else if (j.type === 'refill') { Sound.sfx('buzz'); say('창고에 채울 인형이 없어요'); }
+      onEvents(r.events);
+    },
+  };
   function update(now) {
     const dt = last == null ? 0 : Math.max(0, Math.min(0.1, now - last));
     last = now; clockNow = now;
@@ -143,22 +137,17 @@ const Game = (function () {
       const n = Math.floor(acc); acc -= n; onEvents(day.step(n));
       const got = Sim.checkAchievements(st, day.result); dayAch = dayAch.concat(got); achieve(got);
     }
-    const v = 110 * speed * dt;
-    const door = ShopView.doorPoint(ShopView.geom(st.shopLevel));
-    actors.forEach((a) => {
-      const dx = a.tx - a.x, dy = a.ty - a.y, d = Math.hypot(dx, dy);
-      a.moving = d > 1;
-      if (d <= v) { a.x = a.tx; a.y = a.ty; } else { a.x += dx / d * v; a.y += dy / d * v; }
-      if (Math.abs(dx) > 2) a.left = dx < 0;
-      a.dwell = a.moving ? 0 : (a.dwell || 0) + dt * speed;
-      if (a.wantLeave && !a.leaving && a.dwell > 1.6) { a.leaving = true; a.moving = true; a.tx = door.x; a.ty = door.y + 8; }
-    });
-    actors = actors.filter((a) => !(a.leaving && !a.moving));
+    Actors.update(dt * speed, day, hooks);
     if (day.done()) finishDay();
   }
 
   // ---------- 건축 화면의 끌어 놓기 ----------
   function press(p) {
+    if (phase === 'open') { // 바닥의 쓰레기를 누르면 주우러 간다
+      const id = Actors.litterAt(p);
+      if (id != null && Actors.enqueue({ type: 'litter', litter: id })) Sound.sfx('click');
+      return;
+    }
     if (phase !== 'build' || popup) return;
     const g = ShopView.geom(st.shopLevel);
     if (p.x >= g.store.x && p.x <= g.store.x + g.store.w && p.y >= g.store.y && p.y <= g.store.y + g.store.h) { popup = 'stock'; page = 0; Sound.sfx('click'); return; }
@@ -195,20 +184,6 @@ const Game = (function () {
   // ---------- 공통 그리기 ----------
   const btn = (x, y, w, h, label, onClick, o) => UI.button({ x, y, w, h }, label, Object.assign({ style: 'secondary', size: 14, onClick }, o));
   const label = (t, x, y, color, align, size) => UI.text(t, x, y, size || 14, color || C.ink, align || 'left');
-
-  function actorDraw(ctx, a, now) {
-    const art = Cutscene.art;
-    const rows = a.moving ? art.ME_WALK[Math.floor(now * 8 + a.id) % 4] : art.ME_BACK;
-    const img = art.outlinedImg(rows, a.pal);
-    const s = 2;
-    UI.rect(a.x - 12, a.y - 3, 24, 5, 'rgba(20,50,77,0.22)');
-    ctx.save();
-    ctx.translate(Math.round(a.x), Math.round(a.y - img.height * s));
-    if (a.moving && a.left) ctx.scale(-1, 1);
-    ctx.drawImage(img, -img.width * s / 2, 0, img.width * s, img.height * s);
-    ctx.restore();
-    if (a.cat !== 'normal') label(a.cat === 'kpop' ? '팬' : '마니아', a.x, a.y - img.height * s - 8, a.cat === 'kpop' ? '#8a4fc0' : '#8a5a1a', 'center');
-  }
 
   function topBar(now) {
     UI.rect(-600, 0, 2200, 56, C.white);
@@ -503,17 +478,10 @@ const Game = (function () {
     const g = ShopView.geom(st.shopLevel);
     const tasks = day.tasks();
     const downIds = tasks.filter((k) => k.type === 'repair').map((k) => k.m);
-    if (tasks.some((k) => k.type === 'clean')) for (let i = 0; i < 14; i++) UI.rect(g.x + 20 + (i * 97) % (g.w - 40), g.y + g.h - 12 - (i * 53) % (g.h - 80), 6, 4, i % 2 ? '#9a8a6a' : '#b0b8c0');
-    // 놓인 것과 손님을 아래에 있는 것이 앞에 오도록 그린다
-    ShopView.things(st).filter((t) => t.holder.pos).map((t) => ({ y: ShopView.depth(g, t), f: () => ShopView.thing(st, t, ShopView.rectOf(g, t), { down: t.kind === 'machine' && downIds.indexOf(t.ref.id) >= 0 }) }))
-      .concat(actors.map((a) => ({ y: a.y, f: () => actorDraw(ctx, a, now) })))
+    // 놓인 것·쓰레기·손님·주인공을 아래에 있는 것이 앞에 오도록 그린다
+    ShopView.things(st).filter((t) => t.holder.pos).map((t) => ({ y: ShopView.depth(g, t) - 12, f: () => ShopView.thing(st, t, ShopView.rectOf(g, t), { down: t.kind === 'machine' && downIds.indexOf(t.ref.id) >= 0 }) }))
+      .concat(Actors.drawList(ctx, now))
       .sort((a, b) => a.y - b.y).forEach((o) => o.f());
-    boxes = boxes.filter((b) => now - b.t < 0.7);
-    boxes.forEach((b) => {
-      const f = Math.min(1, (now - b.t) / 0.7);
-      const x = b.x0 + (b.x1 - b.x0) * f, y = b.y0 + (b.y1 - b.y0) * f - Math.sin(f * Math.PI) * 40;
-      UI.framed({ x: x - 9, y: y - 8, w: 18, h: 16 }, '#c79a6a', 2); UI.rect(x - 2, y - 8, 4, 16, '#e0b988');
-    });
     pops = pops.filter((p) => now - p.t < 1.1);
     pops.forEach((p) => UI.text(p.text, p.x, p.y - (now - p.t) * 24, 14, p.color, 'center', C.white, 4));
     // 할 일 말풍선(누르면 처리)
@@ -524,7 +492,9 @@ const Game = (function () {
       x = r.x + r.w / 2; y = r.y - 4 - (k.type === 'repair' && tasks.some((o) => o.m === k.m && o.type === 'refill') ? 34 : 0);
       const bounce = Math.floor(now * 4) % 2 * 2;
       const text = k.noStock ? '재고 없음' : TASK[k.type] + (k.type === 'exchange' ? ' ' + k.waiting : '');
-      btn(x - (k.noStock ? 42 : 30), y - 26 - bounce, k.noStock ? 84 : 60, 28, text, () => doTask(k), { style: k.type === 'repair' ? 'danger' : k.noStock ? 'soft' : 'primary' });
+      const state = Actors.jobState(k.type, k.m);
+      const wide = k.noStock || state >= 0;
+      btn(x - (wide ? 42 : 30), y - 26 - (state < 0 ? bounce : 0), wide ? 84 : 60, 28, state === 0 ? '처리 중' : state > 0 ? '대기 ' + state : text, () => order1(k), { style: state >= 0 || k.noStock ? 'soft' : k.type === 'repair' ? 'danger' : 'primary' });
     });
     topBar(now);
     const t = day.time(), hh = CFG.SIM.OPEN + Math.floor(t / 60), mm = String(t % 60).padStart(2, '0');
@@ -543,9 +513,14 @@ const Game = (function () {
     UI.panel(p, C.white, 3);
     label('할 일 ' + tasks.length, p.x + p.w / 2, p.y + 24, C.ink, 'center', 18);
     if (!tasks.length) label('지금은 한가해요', p.x + p.w / 2, p.y + 70, C.sub, 'center');
-    tasks.slice(0, 9).forEach((k, i) => {
+    label('바닥의 쓰레기는', p.x + p.w / 2, p.y + p.h - 44, C.sub, 'center');
+    label('눌러서 치워요', p.x + p.w / 2, p.y + p.h - 20, C.sub, 'center');
+    tasks.slice(0, 8).forEach((k, i) => {
       const m = k.m != null ? st.machines.find((x) => x.id === k.m) : null;
-      btn(p.x + 12, p.y + 46 + i * 46, p.w - 24, 36, (k.noStock ? '재고 없음' : TASK[k.type]) + (m ? ' · ' + mname(m) : k.type === 'exchange' ? ' · ' + k.waiting + '명' : ''), () => doTask(k), { style: k.type === 'repair' ? 'danger' : k.noStock ? 'soft' : 'secondary' });
+      const state = Actors.jobState(k.type, k.m);
+      const head = state === 0 ? '처리 중' : state > 0 ? '대기 ' + state : k.noStock ? '재고 없음' : TASK[k.type];
+      const tail = state >= 0 ? ' ' + TASK[k.type] : m ? ' · ' + mname(m) : k.type === 'exchange' ? ' · ' + k.waiting + '명' : '';
+      btn(p.x + 12, p.y + 46 + i * 46, p.w - 24, 36, head + tail, () => order1(k), { style: state >= 0 || k.noStock ? 'soft' : k.type === 'repair' ? 'danger' : 'secondary' });
     });
   }
 

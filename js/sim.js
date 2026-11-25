@@ -465,6 +465,14 @@ const Sim = (function () {
       return true;
     }
 
+    // 바닥의 쓰레기 하나를 줍는다(청소할 일이 있어도 기준 아래로 줄면 해결된다)
+    function pickLitter() {
+      if (litter > 0) litter--;
+      const k = findTask('clean', null);
+      if (k && litter < Z.LITTER.task * (st.equip.bin ? Z.LITTER.binMult : 1)) { if (t - k.t > Z.FAST_TASK) R.lateTasks++; dropTask('clean', null); }
+      return litter;
+    }
+
     function pickCategory(h) {
       const weekend = env.dow >= 5;
       const list = custTypes.filter((c) => c.rank <= st.rank);
@@ -525,6 +533,7 @@ const Sim = (function () {
       if (c.sat < 0.2 && rng() < 0.35) { R.claims++; ev('claim', { c: c.id }); }
       if (rng() < Z.LITTER.chance * (st.equip.robot ? Z.LITTER.robotKeep : 1)) {
         litter++;
+        ev('litter', { c: c.id });
         if (litter >= Z.LITTER.task * (st.equip.bin ? Z.LITTER.binMult : 1)) addTask('clean', null);
       }
       ev('leave', { c: c.id, why, plays: c.plays, wins: c.wins, spent: c.spent });
@@ -587,7 +596,7 @@ const Sim = (function () {
       // 환전이 필요한 손님은 처리해 줄 때까지 기다린다
       let ex = Z.EXCHANGE.chance * (st.equip.exchanger ? Z.EXCHANGE.exchangerKeep : 1);
       if (st.equip.globalpay && cat.id === 'kpop') ex = 0;
-      if (rng() < ex) { waiting.push(c); addTask('exchange', null); return; }
+      if (rng() < ex) { waiting.push(c); ev('exchange', { c: c.id }); addTask('exchange', null); return; }
       join(c);
     }
 
@@ -595,7 +604,7 @@ const Sim = (function () {
       const h = Z.OPEN + Math.floor(t / 60);
       mrt.forEach((r) => {
         if (r.breakAt === t) { r.down = true; r.brokeAt = t; addTask('repair', r.m.id); ev('breakdown', { m: r.m.id }); }
-        if (r.down && t - r.brokeAt >= Z.TECHNICIAN.delay) act('repair', r.m.id, Z.TECHNICIAN.cost); // 오래 두면 기사를 부른다
+        if (r.down && t - r.brokeAt >= Z.TECHNICIAN.delay && !(findTask('repair', r.m.id) || {}).claimed) act('repair', r.m.id, Z.TECHNICIAN.cost); // 오래 두면 기사를 부른다
         if (r.down) r.downMin++;
         const used = slotsUsed(r.m);
         if (used === 0) r.emptyMin++;
@@ -609,7 +618,8 @@ const Sim = (function () {
       const n = rng.poisson(visitorsToday * (hourMult(h) / wsum) / 60);
       for (let i = 0; i < n; i++) arrive(h);
       // 환전을 기다리다 나가는 손님
-      waiting = waiting.filter((c) => { if (t - c.waitFrom > Z.EXCHANGE.wait) { leave(c, 'exchange'); return false; } return true; });
+      const coming = (findTask('exchange', null) || {}).claimed; // 사장님이 가고 있으면 기다린다
+      waiting = waiting.filter((c) => { if (!coming && t - c.waitFrom > Z.EXCHANGE.wait) { leave(c, 'exchange'); return false; } return true; });
       if (!waiting.length) dropTask('exchange', null);
       // 기계 이용
       mrt.forEach((r) => {
@@ -702,6 +712,8 @@ const Sim = (function () {
     return {
       step, close,
       act: (type, mid) => { events = []; const ok = act(type, mid); return { ok, events }; },
+      claim: (type, mid, on) => { const k = findTask(type, mid == null ? null : mid); if (k) k.claimed = !!on; },
+      pickLitter: () => { events = []; return pickLitter(); },
       tasks: () => tasks.map((k) => Object.assign({}, k, { waiting: k.type === 'exchange' ? waiting.length : undefined, noStock: k.type === 'refill' ? !canRefill(st, byId[k.m].m) : false })),
       time: () => t,
       done: () => t >= TICKS,
