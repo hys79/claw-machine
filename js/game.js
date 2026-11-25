@@ -738,6 +738,9 @@ const Game = (function () {
     ShopView.things(st).filter((t) => t.holder.pos).map((t) => ({ y: ShopView.depth(g, t) - 12, f: () => ShopView.thing(st, t, ShopView.rectOf(g, t), { down: t.kind === 'machine' && downIds.indexOf(t.ref.id) >= 0 }) }))
       .concat(Actors.drawList(ctx, now))
       .sort((a, b) => a.y - b.y).forEach((o) => o.f());
+    // 기계 위: 지금 들어 있는 인형의 종류(취향 아이콘 + 크기)
+    ShopView.things(st).filter((t) => t.holder.pos && t.kind === 'machine').sort((a, b) => ShopView.depth(g, a) - ShopView.depth(g, b))
+      .forEach((t) => ShopView.badges(t.ref, ShopView.rectOf(g, t)));
     pops = pops.filter((p) => now - p.t < 1.1);
     pops.forEach((p) => UI.text(p.text, p.x, p.y - (now - p.t) * 24, 14, p.color, 'center', C.white, 4));
     // 할 일 말풍선(누르면 처리)
@@ -755,7 +758,8 @@ const Game = (function () {
       }
       const t = findThing(k.m != null ? 'm' + k.m : 'b' + Sim.info.placedBins(st)[0].uid);
       const r = ShopView.rectOf(g, t);
-      const x = r.x + r.w / 2, y = r.y - 4 - (k.type === 'repair' && tasks.some((o) => o.m === k.m && o.type === 'refill') ? 34 : 0);
+      const second = k.type === 'repair' && tasks.some((o) => o.m === k.m && o.type === 'refill');
+      const x = r.x + r.w / 2, y = k.m != null ? r.y + 58 + (second ? 32 : 0) : r.y - 4; // 쓰레기통(청소)은 위에
       const text = k.noStock ? '재고 없음' : TASK[k.type];
       const wide = k.noStock || state >= 0;
       btn(x - (wide ? 42 : 30), y - 26 - bounce, wide ? 84 : 60, 28, state === 0 ? '처리 중' : state > 0 ? '대기 ' + state : text, () => order1(k), { style: state >= 0 || k.noStock ? 'soft' : k.type === 'repair' ? 'danger' : 'primary' });
@@ -773,6 +777,11 @@ const Game = (function () {
     label('방문 ' + today.visitors + '명', 20, 534, C.ink, 'left', 18);
     label('획득 ' + today.wins + '개', 200, 534, C.ink, 'left', 18);
     label('오늘 매출 ' + won(today.revenue), 380, 534, C.blue, 'left', 18);
+    DATA.TASTES.forEach((t, i) => { // 아이콘 설명
+      ShopView.tasteIcon(20 + i * 100, 552, t);
+      label(t, 42 + i * 100, 560, C.sub);
+    });
+    label('S·M·L·XL = 크기', 530, 560, C.sub);
     const p = { x: 732, y: 74, w: 210, h: 478 };
     UI.panel(p, C.white, 3);
     label('할 일 ' + tasks.length, p.x + p.w / 2, p.y + 24, C.ink, 'center', 18);

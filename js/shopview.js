@@ -7,7 +7,10 @@ const ShopView = (function () {
   const GRIDS = [[6, 4], [8, 4], [10, 5], [12, 5]];        // 점포 단계별 [가로, 세로] 칸
   const AREA = { x: 20, y: 70, w: 690, h: 420 };           // 가게가 놓이는 영역
   const WALL = 70;
-  const TASTE_COLOR = { 동물: '#c98d58', 귀여움: '#ff9fbc', 음식: '#ffb347', 코믹: '#7ccf6a', 우주: '#7a8cf0', 레트로: '#b59a6a', 희귀: '#ffd84a', 아이돌: '#c58bf0' };
+  const TASTE_COLOR = { 동물: '#d9a06c', 음식: '#ff9a5c', 코믹: '#7ccf6a', 희귀: '#ffd84a', 아이돌: '#c58bf0' };
+  const SIZE_ORDER = ['S', 'M', 'L', 'XL'];
+  // 크기 글자(3×5, M만 5×5)
+  const LETTER = { S: ['kkk', 'k..', 'kkk', '..k', 'kkk'], M: ['k...k', 'kk.kk', 'k.k.k', 'k...k', 'k...k'], L: ['k..', 'k..', 'k..', 'k..', 'kkk'], X: ['k.k', 'k.k', '.k.', 'k.k', 'k.k'] };
   const CABINET = { mini: ['#7fd0c4', '#4fae9f'], standard: ['#4590e0', '#2c6cb8'], big: ['#8a7be0', '#5f50b8'], timer: ['#f0a13c', '#c0761a'] };
 
   function geom(level) {
@@ -152,6 +155,41 @@ const ShopView = (function () {
     UI.rect(x, y + 2 * s, 7 * s, 5 * s, c);
     UI.rect(x, y, 2 * s, 2 * s, c); UI.rect(x + 5 * s, y, 2 * s, 2 * s, c);
     UI.rect(x + 2 * s, y + 3 * s, s, s, C.ink); UI.rect(x + 4 * s, y + 3 * s, s, s, C.ink);
+  }
+
+  // 기계에 든 인형의 종류(취향·크기 조합). 취향 순, 크기 순
+  function kinds(m) {
+    const seen = {};
+    Object.keys(m.load).forEach((id) => { if (m.load[id].qty > 0) { const d = Sim.info.doll(id); seen[d.taste[0] + d.size] = { taste: d.taste[0], size: d.size }; } });
+    const rank = (v) => DATA.TASTES.indexOf(v.taste) * 10 + SIZE_ORDER.indexOf(v.size);
+    return Object.keys(seen).map((k) => seen[k]).sort((a, b) => rank(a) - rank(b));
+  }
+  // 취향 아이콘 칸(14×14)
+  function tasteIcon(x, y, taste) {
+    UI.rect(x, y, 14, 14, TASTE_COLOR[taste]);
+    UI.sprite(DATA.TASTE_ICON[taste], C.ink, x, y, 2);
+  }
+  // 기계 위의 표시: 그 기계의 인형 종류를 한 판에 모아 보여 준다(칸 = 취향 아이콘 + 크기 글자).
+  // 판은 기계보다 좁아서 옆 기계의 판과 붙지 않는다. r: 기계의 화면 영역
+  function badges(m, r) {
+    const list = kinds(m), W = 14, H = 27, GAP = 1;
+    if (!list.length) return;
+    const per = Math.max(1, Math.floor((r.w - 4 + GAP) / (W + GAP))), rows = Math.ceil(list.length / per);
+    const ph = rows * (H + 3) - 3, py = r.y - 8 - ph, mid = Math.round(r.x + r.w / 2);
+    for (let row = 0; row < rows; row++) { // 줄마다 그 줄에 든 만큼만 판을 깐다
+      const items = list.slice(row * per, row * per + per), pw = items.length * (W + GAP) - GAP;
+      const px = Math.round(mid - pw / 2), y = py + row * (H + 3);
+      UI.framed({ x: px - 1, y, w: pw + 2, h: H }, C.edge, 2);
+      items.forEach((v, i) => {
+        const x = px + i * (W + GAP);
+        UI.rect(x, y, W, H, '#ffffff');
+        tasteIcon(x, y, v.taste);
+        const letters = v.size.split(''), width = letters.reduce((n, c) => n + LETTER[c][0].length * 2 + 2, -2);
+        let lx = x + Math.round((W - width) / 2);
+        letters.forEach((c) => { UI.sprite(LETTER[c], C.ink, lx, y + 16, 2); lx += LETTER[c][0].length * 2 + 2; });
+      });
+    }
+    UI.rect(mid - 4, py + ph + 2, 8, 2, C.ink); UI.rect(mid - 2, py + ph + 4, 4, 2, C.ink); // 아래 기계를 가리키는 꼬리
   }
 
   // 유리 안의 인형(많을수록 많이 보인다)
@@ -307,13 +345,13 @@ const ShopView = (function () {
     plant: (r, cx, b) => { UI.framed({ x: cx - 11, y: b - 20, w: 22, h: 18 }, '#c97a4a', 2); [[-14, -38, 16, 16], [0, -42, 14, 18], [-6, -50, 12, 14]].forEach((a) => UI.rect(cx + a[0], b + a[1], a[2], a[3], '#3f9a5a')); UI.rect(cx - 2, b - 30, 4, 12, '#2c7a44'); },
     trophy: (r, cx, b) => { UI.framed({ x: cx - 14, y: b - 14, w: 28, h: 12 }, '#8a6a4a', 2); UI.rect(cx - 3, b - 26, 6, 12, '#f2c14e'); UI.framed({ x: cx - 10, y: b - 44, w: 20, h: 18 }, '#ffd84a', 2); },
     bench: (r, cx, b) => { UI.framed({ x: r.x + 6, y: b - 34, w: r.w - 12, h: 10 }, '#c79a6a', 2); UI.framed({ x: r.x + 4, y: b - 20, w: r.w - 8, h: 10 }, '#e0b988', 2); UI.rect(r.x + 10, b - 8, 6, 8, C.ink); UI.rect(r.x + r.w - 16, b - 8, 6, 8, C.ink); },
-    photozone: (r, cx, b) => { UI.framed({ x: r.x + 6, y: r.y + 4, w: r.w - 12, h: r.h - 12 }, '#ffd6e4', 3); UI.framed({ x: r.x + 16, y: r.y + 14, w: r.w - 32, h: r.h - 34 }, '#d8f1ff', 2); dollIcon(cx - 14, b - 42, { taste: ['귀여움'] }, 4); },
+    photozone: (r, cx, b) => { UI.framed({ x: r.x + 6, y: r.y + 4, w: r.w - 12, h: r.h - 12 }, '#ffd6e4', 3); UI.framed({ x: r.x + 16, y: r.y + 14, w: r.w - 32, h: r.h - 34 }, '#d8f1ff', 2); dollIcon(cx - 14, b - 42, { taste: ['아이돌'] }, 4); },
     aquarium: (r, cx, b) => { UI.framed({ x: r.x + 6, y: b - 46, w: r.w - 12, h: 36 }, '#5cc0e8', 2); UI.rect(r.x + 4, b - 10, r.w - 8, 10, C.ink); [[16, -34, '#ffb347'], [50, -22, '#ff9fbc'], [76, -38, '#ffd84a']].forEach((f) => { UI.rect(r.x + f[0], b + f[1], 10, 6, f[2]); UI.rect(r.x + f[0] - 4, b + f[1] + 1, 4, 4, f[2]); }); },
     mascot: (r, cx, b) => { UI.framed({ x: cx - 32, y: b - 10, w: 64, h: 8 }, '#7d8b99', 2); dollIcon(cx - 28, b - 66, { taste: ['아이돌'] }, 8); },
     goldstatue: (r, cx, b) => { UI.framed({ x: cx - 30, y: b - 16, w: 60, h: 14 }, '#8a5a1a', 2); dollIcon(cx - 25, b - 66, { taste: ['희귀'] }, 7); UI.rect(cx + 20, b - 68, 4, 12, '#ffffff'); UI.rect(cx + 16, b - 64, 12, 4, '#ffffff'); },
     arcadeset: (r, cx, b) => { UI.framed({ x: cx - 17, y: b - 52, w: 34, h: 50 }, '#d9455f', 2); UI.framed({ x: cx - 11, y: b - 46, w: 22, h: 18 }, '#14324d', 2); UI.rect(cx - 5, b - 40, 8, 6, '#7ccf6a'); UI.rect(cx - 10, b - 18, 6, 6, '#ffd84a'); UI.rect(cx + 4, b - 18, 6, 6, '#ffffff'); },
     crown: (r, cx, b) => { UI.framed({ x: cx - 18, y: b - 20, w: 36, h: 18 }, '#5f50b8', 2); UI.framed({ x: cx - 14, y: b - 38, w: 28, h: 14 }, '#ffd84a', 2); [-14, -3, 8].forEach((d) => UI.rect(cx + d, b - 48, 6, 10, '#ffd84a')); },
-    poster: (r) => { UI.framed({ x: r.x + 10, y: r.y - 2, w: r.w - 20, h: r.h + 2 }, '#ffffff', 2); dollIcon(r.x + r.w / 2 - 7, r.y + 7, { taste: ['귀여움'] }, 2); },
+    poster: (r) => { UI.framed({ x: r.x + 10, y: r.y - 2, w: r.w - 20, h: r.h + 2 }, '#ffffff', 2); dollIcon(r.x + r.w / 2 - 7, r.y + 7, { taste: ['아이돌'] }, 2); },
     neon: (r, cx) => { UI.framed(r, '#14324d', 2); UI.text('뽑기!', cx, r.y + r.h / 2, 14, '#ff9fbc'); },
     ledboard: (r, cx) => { UI.framed(r, '#14324d', 3); for (let i = 0; i < Math.floor(r.w / 12) - 1; i++) UI.rect(r.x + 8 + i * 12, r.y + 3, 5, 3, ['#ffd84a', '#7ccf6a', '#ff9fbc'][i % 3]); UI.text('ARENA LIVE', cx, r.y + r.h / 2 + 3, 14, '#6ab0f0'); },
     goldframe: (r) => { UI.framed({ x: r.x + 10, y: r.y, w: r.w - 20, h: r.h - 2 }, '#ffd84a', 2); UI.rect(r.x + 15, r.y + 5, r.w - 30, r.h - 12, '#d8f1ff'); },
@@ -339,7 +377,7 @@ const ShopView = (function () {
       if (rot === 2) { UI.framed({ x: r.x + 6, y: r.y + 4, w: r.w - 12, h: r.h - 12 }, '#d9a8b8', 3); UI.rect(cx - 2, r.y + 8, 4, r.h - 20, '#b8869a'); return; }
       const board = rot === 1 ? r.x + r.w - 18 : r.x + 6;
       UI.framed({ x: board, y: r.y + 4, w: 12, h: r.h - 12 }, '#ffd6e4', 3);
-      figure(cx - 14, b - 40, 4, '귀여움', rot);
+      figure(cx - 14, b - 40, 4, '아이돌', rot);
     },
     aquarium: (r, cx, b, rot) => {
       if (rot === 2) { UI.mirror(cx, () => ART.aquarium(r, cx, b)); return; }
@@ -382,5 +420,5 @@ const ShopView = (function () {
   // 앞뒤 순서: 아래 줄에 있는 것이 앞
   const depth = (g, t) => (t.wall ? -1000 : g.y + (t.holder.pos.y + dims(t).h) * CH);
 
-  return { CW, CH, geom, canRotate, rotOf, dims, cells, frontOf, machineThing, things, stored, canPlace, autoPlace, rectOf, depth, standPoint, doorPoint, room, thing, dollIcon, TASTE_COLOR };
+  return { CW, CH, geom, canRotate, rotOf, dims, cells, frontOf, machineThing, things, stored, canPlace, autoPlace, rectOf, depth, standPoint, doorPoint, room, thing, dollIcon, TASTE_COLOR, badges, tasteIcon };
 })();

@@ -188,39 +188,49 @@ DATA.ICON_SPEAKER = (function () {
 })();
 
 // ===== 시뮬레이션 데이터(초안) =====
-// 인형 태그는 크기(size)와 취향(taste) 두 가지. 손님도 같은 취향을 가진다.
-DATA.TASTES = ['동물', '귀여움', '음식', '코믹', '우주', '레트로', '희귀', '아이돌'];
+// 인형 태그는 크기(size)와 취향(taste) 두 가지. 인형도 손님도 취향은 하나씩이다.
+// 인형 이름과 그림은 임시(placeholder)이며 후반 작업에서 한 번에 다듬는다.
+DATA.TASTES = ['동물', '음식', '코믹', '희귀', '아이돌'];
+// 취향 아이콘(7×7 도트, k 한 색). 영업 화면의 기계 위 표시에 쓴다.
+DATA.TASTE_ICON = {
+  동물: ['.......', '.k.k.k.', '.k.k.k.', '.......', '..kkk..', '.kkkkk.', '.kk.kk.'],       // 발바닥
+  음식: ['....kk.', '...kkkk', '..kkkkk', '..kkkk.', '..kk...', '.k.....', 'kk.....'],       // 닭다리
+  코믹: ['.kkkkk.', 'k.....k', 'k.k.k.k', 'k.....k', 'kkkkkkk', 'k.kkk.k', '.kkkkk.'],       // 웃는 얼굴
+  희귀: ['...k...', '...k...', 'kkkkkkk', '.kkkkk.', '..kkk..', '.kk.kk.', '.k...k.'],       // 별
+  아이돌: ['...kkk.', '...k.kk', '...k..k', '...k...', '.kkk...', 'kkkk...', '.kk....'],     // 음표
+};
 
 // 인형: size S/M/L/XL, cost 도매 원가(원), taste 취향 태그, hard 0~1(집기 어려움),
 // rank 해금 단계(1=5랭크 … 5=1랭크), special: 특별 공연 한정(공연 전 일주일 동안만 발주). 아이돌 인형은 전부 가상 그룹이다.
 DATA.DOLLS = [
-  { id: 'chick', name: '꼬마 병아리', size: 'S', cost: 600, taste: ['동물', '귀여움'], hard: 0.0, rank: 1 },
-  { id: 'rocket', name: '콩알 로켓', size: 'S', cost: 700, taste: ['우주', '귀여움'], hard: 0.0, rank: 1 },
-  { id: 'breadduck', name: '식빵 오리', size: 'S', cost: 700, taste: ['음식', '코믹'], hard: 0.05, rank: 1 },
-  { id: 'oldrobot', name: '태엽 로봇', size: 'S', cost: 900, taste: ['레트로', '우주'], hard: 0.1, rank: 1 },
-  { id: 'lumikey', name: '루미나 미니 응원인형', size: 'S', cost: 1100, taste: ['아이돌', '귀여움'], hard: 0.05, rank: 2 },
-  { id: 'roundbear', name: '동글 곰', size: 'M', cost: 2400, taste: ['동물', '귀여움'], hard: 0.1, rank: 1 },
-  { id: 'berrybunny', name: '딸기 토끼', size: 'M', cost: 2600, taste: ['음식', '귀여움'], hard: 0.1, rank: 1 },
-  { id: 'penguin', name: '펭귄 반장', size: 'M', cost: 2500, taste: ['동물', '코믹'], hard: 0.1, rank: 1 },
-  { id: 'spacecat', name: '우주냥', size: 'M', cost: 3000, taste: ['우주', '동물'], hard: 0.15, rank: 1 },
-  { id: 'retrofrog', name: '옛날 개구리', size: 'M', cost: 3200, taste: ['레트로', '코믹'], hard: 0.15, rank: 1 },
-  { id: 'rainbowsheep', name: '무지개 양', size: 'M', cost: 4200, taste: ['희귀', '귀여움'], hard: 0.3, rank: 2 },
-  { id: 'moonrabbit', name: '달토끼 요정', size: 'M', cost: 4500, taste: ['희귀', '우주'], hard: 0.3, rank: 2 },
-  { id: 'goldpig', name: '황금 저금 돼지', size: 'M', cost: 5500, taste: ['희귀', '레트로'], hard: 0.3, rank: 3 },
-  { id: 'lumidol', name: '루미나 멤버 인형', size: 'M', cost: 3800, taste: ['아이돌', '귀여움'], hard: 0.15, rank: 2 },
-  { id: 'bigbear', name: '뭉치 곰', size: 'L', cost: 7500, taste: ['동물', '귀여움'], hard: 0.1, rank: 1 },
-  { id: 'bigburger', name: '왕 햄버거 쿠션', size: 'L', cost: 8000, taste: ['음식', '코믹'], hard: 0.15, rank: 1 },
-  { id: 'cheerbear', name: '루미나 응원봉 곰', size: 'L', cost: 10000, taste: ['아이돌', '동물'], hard: 0.2, rank: 2 },
-  { id: 'classicbear', name: '빈티지 태엽 곰', size: 'L', cost: 11000, taste: ['레트로', '희귀'], hard: 0.25, rank: 3 },
-  { id: 'stagebear', name: '특별 무대 응원 곰', size: 'M', cost: 4800, taste: ['아이돌', '희귀'], hard: 0.2, rank: 2, special: true },
+  { id: 'chick', name: '꼬마 병아리', size: 'S', cost: 600, taste: ['동물'], hard: 0.0, rank: 1 },
+  { id: 'rocket', name: '콩알 로켓', size: 'S', cost: 700, taste: ['코믹'], hard: 0.0, rank: 1 },
+  { id: 'breadduck', name: '식빵 오리', size: 'S', cost: 700, taste: ['음식'], hard: 0.05, rank: 1 },
+  { id: 'oldrobot', name: '태엽 로봇', size: 'S', cost: 900, taste: ['코믹'], hard: 0.1, rank: 1 },
+  { id: 'lumikey', name: '루미나 미니 응원인형', size: 'S', cost: 1100, taste: ['아이돌'], hard: 0.05, rank: 2 },
+  { id: 'roundbear', name: '동글 곰', size: 'M', cost: 2400, taste: ['동물'], hard: 0.1, rank: 1 },
+  { id: 'berrybunny', name: '딸기 토끼', size: 'M', cost: 2600, taste: ['음식'], hard: 0.1, rank: 1 },
+  { id: 'penguin', name: '펭귄 반장', size: 'M', cost: 2500, taste: ['코믹'], hard: 0.1, rank: 1 },
+  { id: 'spacecat', name: '우주냥', size: 'M', cost: 3000, taste: ['동물'], hard: 0.15, rank: 1 },
+  { id: 'retrofrog', name: '옛날 개구리', size: 'M', cost: 3200, taste: ['코믹'], hard: 0.15, rank: 1 },
+  { id: 'rainbowsheep', name: '무지개 양', size: 'M', cost: 4200, taste: ['희귀'], hard: 0.3, rank: 2 },
+  { id: 'moonrabbit', name: '달토끼 요정', size: 'M', cost: 4500, taste: ['희귀'], hard: 0.3, rank: 2 },
+  { id: 'goldpig', name: '황금 저금 돼지', size: 'M', cost: 5500, taste: ['희귀'], hard: 0.3, rank: 3 },
+  { id: 'lumidol', name: '루미나 멤버 인형', size: 'M', cost: 3800, taste: ['아이돌'], hard: 0.15, rank: 2 },
+  { id: 'bigbear', name: '뭉치 곰', size: 'L', cost: 7500, taste: ['동물'], hard: 0.1, rank: 1 },
+  { id: 'bigburger', name: '왕 햄버거 쿠션', size: 'L', cost: 8000, taste: ['음식'], hard: 0.15, rank: 1 },
+  { id: 'cheerbear', name: '루미나 응원봉 곰', size: 'L', cost: 10000, taste: ['아이돌'], hard: 0.2, rank: 2 },
+  { id: 'bigoctopus', name: '대왕 문어', size: 'L', cost: 7800, taste: ['코믹'], hard: 0.15, rank: 1 },
+  { id: 'classicbear', name: '빈티지 태엽 곰', size: 'L', cost: 11000, taste: ['희귀'], hard: 0.25, rank: 3 },
+  { id: 'stagebear', name: '특별 무대 응원 곰', size: 'M', cost: 4800, taste: ['아이돌'], hard: 0.2, rank: 2, special: true },
   // 도전과제 보상으로만 해금되는 인형(locked: true)
-  { id: 'goldchick', name: '황금 병아리', size: 'S', cost: 900, taste: ['희귀', '귀여움'], hard: 0.1, rank: 1, locked: true },
-  { id: 'rainbowwhale', name: '무지개 고래', size: 'M', cost: 3600, taste: ['희귀', '동물'], hard: 0.15, rank: 1, locked: true },
-  { id: 'arcadecat', name: '오락실 고양이', size: 'M', cost: 3200, taste: ['레트로', '귀여움'], hard: 0.1, rank: 1, locked: true },
-  { id: 'mooncake', name: '달떡 토끼 쿠션', size: 'L', cost: 8200, taste: ['음식', '희귀'], hard: 0.15, rank: 1, locked: true },
-  { id: 'megabear', name: '거대 뭉치 곰', size: 'XL', cost: 28000, taste: ['동물', '귀여움'], hard: 0, rank: 3 },
-  { id: 'jumborobot', name: '초대형 태엽 로봇', size: 'XL', cost: 34000, taste: ['레트로', '희귀'], hard: 0, rank: 3 },
-  { id: 'jumboidol', name: '루미나 점보 마스코트', size: 'XL', cost: 36000, taste: ['아이돌', '귀여움'], hard: 0, rank: 3 },
+  { id: 'goldchick', name: '황금 병아리', size: 'S', cost: 900, taste: ['희귀'], hard: 0.1, rank: 1, locked: true },
+  { id: 'rainbowwhale', name: '무지개 고래', size: 'M', cost: 3600, taste: ['동물'], hard: 0.15, rank: 1, locked: true },
+  { id: 'arcadecat', name: '오락실 고양이', size: 'M', cost: 3200, taste: ['동물'], hard: 0.1, rank: 1, locked: true },
+  { id: 'mooncake', name: '달떡 토끼 쿠션', size: 'L', cost: 8200, taste: ['음식'], hard: 0.15, rank: 1, locked: true },
+  { id: 'megabear', name: '거대 뭉치 곰', size: 'XL', cost: 28000, taste: ['동물'], hard: 0, rank: 3 },
+  { id: 'jumborobot', name: '초대형 태엽 로봇', size: 'XL', cost: 34000, taste: ['코믹'], hard: 0, rank: 3 },
+  { id: 'jumboidol', name: '루미나 점보 마스코트', size: 'XL', cost: 36000, taste: ['아이돌'], hard: 0, rank: 3 },
 ];
 
 // 기계. sizes: 넣을 수 있는 인형 크기, slots/slotCost: 진열 칸, grab: 크기별 집기 성공 확률(난이도 3 기준),
@@ -255,11 +265,11 @@ DATA.MACHINES = {
 
 // 손님 분류: 분류마다 다른 것은 선호 취향(tastes: 뽑힐 가중치)과 출몰 시간뿐이다. rank: 등장하는 단계.
 DATA.CUSTOMERS = [
-  { id: 'normal', name: '일반', rank: 1, weight: 1.0, tastes: { 동물: 3, 귀여움: 3, 음식: 2, 코믹: 2, 우주: 1.5, 레트로: 0.3, 희귀: 0.3, 아이돌: 0.4 },
+  { id: 'normal', name: '일반', rank: 1, weight: 1.0, tastes: { 동물: 3, 음식: 2.5, 코믹: 2.5, 희귀: 0.3, 아이돌: 0.4 },
     time: { hours: [12, 20], mult: 1.3, off: 0.8, weekend: 1.3, show: 1.0 } },
-  { id: 'mania', name: '마니아', rank: 1, weight: 0.3, tastes: { 희귀: 3, 레트로: 3, 우주: 0.6, 동물: 0.4 },
+  { id: 'mania', name: '마니아', rank: 1, weight: 0.3, tastes: { 희귀: 3, 코믹: 1.5 },
     time: { hours: [19, 22], mult: 2.2, off: 0.5, weekend: 1.2, show: 0.8 } },
-  { id: 'kpop', name: 'K-pop 팬', rank: 2, weight: 0.3, tastes: { 아이돌: 5, 귀여움: 1.5, 희귀: 0.6 },
+  { id: 'kpop', name: 'K-pop 팬', rank: 2, weight: 0.3, tastes: { 아이돌: 5, 희귀: 0.5 },
     time: { hours: [13, 19], mult: 1.8, off: 0.6, weekend: 1.2, show: 3.0 } },
 ];
 

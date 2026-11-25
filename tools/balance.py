@@ -40,10 +40,8 @@ DESC = {
     'SIM.CUSTOMER.BUDGET_AVG': ('손님', '손님 평균 예산(원)'), 'SIM.CUSTOMER.BUDGET_SPREAD': ('손님', '예산 편차'),
     'SIM.CUSTOMER.patience': ('손님', '연속 실패 허용 [최소, 최대]'), 'SIM.CUSTOMER.wait': ('손님', '줄 서서 기다리는 분 [최소, 최대]'),
     'SIM.CUSTOMER.skill': ('손님', '뽑기 숙련 [최소, 최대]'), 'SIM.CUSTOMER.win': ('손님', '성공 후 계속할 확률(0~1)'),
-    'SIM.CUSTOMER.TWO_TASTES': ('손님', '취향이 2개인 손님 비율(0~1)'),
-    'SIM.MATCH.appeal': ('취향', '취향 일치 0 / 1 / 2개일 때 선호 배수'), 'SIM.MATCH.leave': ('취향', '맞는 인형이 없을 때 돌아갈 확률'),
-    'SIM.MATCH.noneMaxPlays': ('취향', '맞는 인형이 없을 때 최대 판 수'), 'SIM.MATCH.satWin': ('취향', '획득 시 일치 1개당 추가 만족'),
-    'SIM.MATCH.extraTry': ('취향', '2개 일치 시 계속할 확률 추가'),
+    'SIM.MATCH.appeal': ('취향', '취향이 안 맞을 때 / 맞을 때 선호 배수'), 'SIM.MATCH.leave': ('취향', '맞는 인형이 없을 때 돌아갈 확률'),
+    'SIM.MATCH.noneMaxPlays': ('취향', '맞는 인형이 없을 때 최대 판 수'), 'SIM.MATCH.satWin': ('취향', '취향에 맞는 인형을 뽑았을 때 추가 만족'),
     'SIM.CONV_K': ('손님', '클수록 가격·줄 때문에 더 많이 돌아간다'),
     'SIM.RESPOND.bot': ('영업 중 일', '검증용 봇의 대응 시간(분)'), 'SIM.RESPOND.staff': ('영업 중 일', '건너뛴 날 직원의 대응 시간(분)'),
     'SIM.RESPOND.none': ('영업 중 일', '방치(건드리지 않음)'),
@@ -81,7 +79,7 @@ SIZES = ['S', 'M', 'L', 'XL']
 def table_specs(tastes):
     """표 시트: (시트 이름, 데이터 위치, 목록 형태(list/dict), [(열 제목, 필드 경로)])"""
     return [
-        ('인형', ['DATA', 'DOLLS'], 'list', [('이름', 'name'), ('크기', 'size'), ('원가(원)', 'cost'), ('취향(쉼표)', 'taste'), ('집기 어려움 0~1', 'hard'), ('해금 단계 1~5', 'rank'), ('특별 공연 한정', 'special')]),
+        ('인형', ['DATA', 'DOLLS'], 'list', [('이름', 'name'), ('크기', 'size'), ('원가(원)', 'cost'), ('취향(1개)', 'taste'), ('집기 어려움 0~1', 'hard'), ('해금 단계 1~5', 'rank'), ('특별 공연 한정', 'special')]),
         ('기계', ['DATA', 'MACHINES'], 'dict', [('이름', 'name'), ('해금 단계', 'rank'), ('구입가', 'price'), ('차지 칸', 'footprint'), ('진열 칸', 'slots'), ('하루 전기', 'power'), ('수리비', 'repair'), ('한 판 시간(초)', 'playSec'),
             ('기본 가격', 'priceDef'), ('가격 최소', 'priceRange.0'), ('가격 최대', 'priceRange.1'), ('기준 가격', 'ref'), ('눈길', 'appeal')]
             + [('집기확률 ' + z, 'grab.' + z) for z in SIZES[:3]] + [('칸 사용 ' + z, 'slotCost.' + z) for z in SIZES]
@@ -337,6 +335,9 @@ def apply():
                 if field == 'special' and old is None and not new:
                     continue
                 if field == 'taste':
+                    if len(new) != 1:
+                        errors.append(where + ': 취향은 하나만 적어 주세요')
+                        continue
                     bad = [x for x in new if x not in base['DATA']['TASTES']]
                     if bad:
                         errors.append(where + ': 없는 취향 ' + ', '.join(bad))
