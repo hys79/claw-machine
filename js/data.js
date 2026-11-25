@@ -274,29 +274,61 @@ DATA.CUSTOMERS = [
     time: { hours: [13, 19], mult: 1.8, off: 0.6, weekend: 1.2, show: 3.0 } },
 ];
 
-// 동네 행사(전부 가상): 평일에 열리고, 그 취향을 가장 좋아하는 손님이 몰린다. hours: 붐비는 시간, category: 더 많이 오는 손님 분류
-DATA.EVENTS = [
-  { id: 'petfest', name: '반려동물 축제', short: '동물 축제', taste: '동물', hours: [11, 17] },
-  { id: 'foodmarket', name: '창동 먹거리 장터', short: '먹거리 장터', taste: '음식', hours: [11, 20] },
-  { id: 'comicfest', name: '만화 축제', short: '만화 축제', taste: '코믹', hours: [13, 19] },
-  { id: 'collector', name: '수집가 교환전', short: '교환전', taste: '희귀', hours: [17, 22], category: 'mania' },
+// 계절: 여름에 시작해 차례로 돌아온다. 한 해는 네 계절.
+DATA.SEASONS = [
+  { id: 'summer', name: '여름', tip: '비와 폭염이 잦아요. 날씨가 궂으면 손님이 줄어요' },
+  { id: 'autumn', name: '가을', tip: '맑은 날이 많아 장사하기 좋아요' },
+  { id: 'winter', name: '겨울', tip: '눈 오는 날은 손님이 적어요. 재고를 조절하세요' },
+  { id: 'spring', name: '봄', tip: '대체로 맑고 가끔 비가 와요' },
 ];
 
-// 계절: 여름에 시작해 차례로 돌아온다. 한 해는 네 계절.
-DATA.SEASONS = [{ id: 'summer', name: '여름' }, { id: 'autumn', name: '가을' }, { id: 'winter', name: '겨울' }, { id: 'spring', name: '봄' }];
-
-// 날짜 행사: 해마다 그 계절의 day일 하루. dayMult: 방문 배수, taste: 몰리는 취향
+// 날짜 행사: 해마다 그 계절의 day일 하루. 취향과 상관없이 손님만 늘어난다(배수는 CFG.SIM.EVENT.dayMult)
 DATA.HOLIDAYS = [
-  { id: 'nightmarket', name: '여름 야시장', short: '여름 야시장', season: 'summer', day: 8, taste: '음식', dayMult: 1.3 },
-  { id: 'watergun', name: '물총 축제', short: '물총 축제', season: 'summer', day: 19, taste: '코믹', dayMult: 1.35 },
-  { id: 'chuseok', name: '추석', short: '추석', season: 'autumn', day: 10, taste: '음식', dayMult: 1.3 },
-  { id: 'halloween', name: '핼러윈', short: '핼러윈', season: 'autumn', day: 26, taste: '코믹', dayMult: 1.4 },
-  { id: 'christmas', name: '크리스마스', short: '크리스마스', season: 'winter', day: 11, taste: '동물', dayMult: 1.5 },
-  { id: 'newyear', name: '새해 첫날', short: '새해', season: 'winter', day: 17, taste: '코믹', dayMult: 1.3 },
-  { id: 'seollal', name: '설날', short: '설날', season: 'winter', day: 23, taste: '음식', dayMult: 1.25 },
-  { id: 'valentine', name: '발렌타인데이', short: '발렌타인', season: 'winter', day: 25, taste: '음식', dayMult: 1.3 },
-  { id: 'whiteday', name: '화이트데이', short: '화이트데이', season: 'spring', day: 5, taste: '동물', dayMult: 1.25 },
-  { id: 'childrens', name: '어린이날', short: '어린이날', season: 'spring', day: 19, taste: '동물', dayMult: 1.5 },
+  { id: 'nightmarket', name: '여름 야시장', short: '여름 야시장', season: 'summer', day: 8 },
+  { id: 'watergun', name: '물총 축제', short: '물총 축제', season: 'summer', day: 19 },
+  { id: 'chuseok', name: '추석', short: '추석', season: 'autumn', day: 10 },
+  { id: 'halloween', name: '핼러윈', short: '핼러윈', season: 'autumn', day: 26 },
+  { id: 'christmas', name: '크리스마스', short: '크리스마스', season: 'winter', day: 11 },
+  { id: 'newyear', name: '새해 첫날', short: '새해', season: 'winter', day: 17 },
+  { id: 'seollal', name: '설날', short: '설날', season: 'winter', day: 23 },
+  { id: 'valentine', name: '발렌타인데이', short: '발렌타인', season: 'winter', day: 25 },
+  { id: 'whiteday', name: '화이트데이', short: '화이트데이', season: 'spring', day: 5 },
+  { id: 'childrens', name: '어린이날', short: '어린이날', season: 'spring', day: 19 },
+];
+
+// 아레나에서 공연하는 아이돌 그룹(전부 가상). 주간지 소식에만 쓴다.
+DATA.IDOLS = [
+  { name: '루미나', note: '반짝이는 무대로 유명한 5인조' },
+  { name: '네온하버', note: '밴드 사운드가 강점인 4인조' },
+  { name: '솔라비', note: '청량한 안무의 7인조 신예' },
+  { name: '민트웨이브', note: '해외 팬이 특히 많은 6인조' },
+];
+
+// 영업 시작 뒤에 끼어드는 이야기. {trend} 유행 취향, {dolls} 그 취향의 인형 이름
+DATA.STORY_NEWS = [
+  { bg: 'street', walkers: 3, actors: [{ id: 'me', x: 100, y: 106 }, { id: 'suit', kind: 'suit', x: 420, y: 106 }], steps: [
+    ['wait', 0.4],
+    ['say', '{name}', '좋아, 오늘도 슬슬 장사 준비를 해 볼까.'],
+    ['move', 'suit', 126, 32, true],
+    ['pose', 'me', 'sideR'], ['emote', 'me', '!'], ['wait', 0.4],
+    ['say', '클럽 회장', '허허, {name} 사장. 장사는 할 만한가?'],
+    ['say', '{name}', '아, 회장님! 덕분에 그럭저럭요.'],
+    ['say', '클럽 회장', '자네, 요즘 가장 유행하는 인형이 뭔지 아는가?'],
+    ['say', '{name}', '음… 글쎄요? 제가 뽑고 싶은 거요?'],
+    ['shake', 2], ['sfx', 'buzz'],
+    ['say', '클럽 회장', '에잉 쯧… 최고 랭크를 노린다는 사람이 그런 것도 몰라?'],
+    ['say', '클럽 회장', '요즘은 {trend} 인형이 대세라네. {dolls} 같은 것들 말일세.'],
+    ['emote', 'me', 'bulb'], ['wait', 0.6],
+    ['say', '클럽 회장', '유행은 매주 바뀐다네. 유행을 놓치면 손님도 놓치는 게야.'],
+    ['say', '클럽 회장', '그래서 준비했지. 바로 「인형뽑기 주간지」일세!'],
+    ['say', '{name}', '주간지요? 좋긴 한데, 저는 아직…'],
+    ['say', '클럽 회장', '구독 신청서는 내가 이미 써 두었네. 자네 이름으로 말이야. 허허허!'],
+    ['emote', 'me', '!'], ['say', '{name}', '네?! 제 허락은요?'],
+    ['say', '클럽 회장', '구독료는 내가 내주지. [소식]에서 꼭 챙겨 보게나.'],
+    ['move', 'suit', 420, 34],
+    ['say', '{name}', '…반강제 구독이라니. 그래도 쓸모는 있겠네.'],
+    ['title', '인형뽑기 주간지 구독 시작', '[소식]에서 유행과 공연, 행사 정보를 확인하세요'],
+  ] },
 ];
 
 // 설비(한 번 사면 영업 중 일이 덜 생긴다). rank: 해금 단계, perMachine: 기계 하나에 다는 개조

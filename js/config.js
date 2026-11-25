@@ -89,8 +89,8 @@ const CFG = {
     EXCHANGE: { chance: 0.04, wait: 25, exchangerKeep: 0.15 },                 // 환전 요청 확률, 기다리는 한계(분), 자동환전기 뒤 남는 비율
     // 외국인: 방문객 중 비율(평일 / 주말 공연 / 특별 공연), K-pop 팬일 확률(4랭크부터), 해외결제를 두면 비율 배수
     FOREIGN: { share: 0.02, show: 0.2, special: 0.35, kpop: 0.75, globalpay: 1.25 },
-    // 동네 행사: firstWeek주를 지난 뒤 매주 평일 하루. 방문 배수, 붐비는 시간 가중, 그 취향 손님 가중, 행사에 맞는 손님 분류 가중
-    EVENT: { firstWeek: 1, dayMult: 1.2, mult: 1.4, demand: 4, category: 2.5 },
+    EVENT: { dayMult: 1.3 },                   // 날짜 행사일의 방문객 배수
+    NEWS: { day: 3 },                          // 클럽 회장이 찾아와 주간지를 구독시키는 날(유행 정보가 열린다)
     // 인플루언서: first일차부터 하루 chance 확률로 예고 없이 방문. 인기도가 최대 max(minGain, 인기도×gain)만큼 오르고,
     // 평이 나쁘면 그 badMult배만큼 내려간다. budget: 평소 손님 예산의 배수
     INFLUENCER: { first: 8, chance: 0.06, gain: 0.06, minGain: 15, badMult: 0.6, budget: 2 },

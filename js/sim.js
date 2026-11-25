@@ -76,21 +76,6 @@ const Sim = (function () {
     return DATA.HOLIDAYS.find((h) => h.season === c.id && h.day === c.day) || null;
   }
 
-  // 동네 행사: 매주 평일(화~금) 하루. 네 주 동안 네 행사가 한 번씩 돌아오고 순서는 가게마다 다르다.
-  // 그 취향의 인형을 아직 구할 수 없는 랭크라면 그 주는 쉰다.
-  // 날짜 행사가 있는 날은 그것이 동네 행사를 대신한다.
-  function eventOf(st, day) {
-    const holiday = holidayOf(day);
-    if (holiday) return holiday;
-    const week = Math.floor((day - 1) / 7) - Z.EVENT.firstWeek, n = DATA.EVENTS.length;
-    if (week < 0) return null;
-    if (dowOf(day) !== 1 + Math.floor(makeRng(st.seed * 131 + week * 977 + 11)() * 4)) return null;
-    const r = makeRng(st.seed * 53 + Math.floor(week / n) * 7919 + 29);
-    const order = DATA.EVENTS.map((_, i) => i);
-    for (let i = n - 1; i > 0; i--) { const j = Math.floor(r() * (i + 1)); const t = order[i]; order[i] = order[j]; order[j] = t; }
-    const e = DATA.EVENTS[order[week % n]];
-    return openTastes(st).indexOf(e.taste) >= 0 ? e : null;
-  }
   // 방문객 중 외국인 비율: 공연일에 크게 늘어난다
   function foreignShare(st, day) {
     const F = Z.FOREIGN;
@@ -512,7 +497,7 @@ const Sim = (function () {
   function repMult(st) { return Z.REP_MULT[0] + (Z.REP_MULT[1] - Z.REP_MULT[0]) * (st.reputation / 100); }
   function expectedVisitors(st, env) {
     const showMult = env.special ? Z.SHOW.special.dayMult : (env.show ? Z.SHOW.dayMult : 1);
-    const event = eventOf(st, st.day), eventMult = event ? event.dayMult || Z.EVENT.dayMult : 1;
+    const eventMult = holidayOf(st.day) ? Z.EVENT.dayMult : 1;
     return Z.BASE_VISITORS * Z.DOW[env.dow] * env.weatherMult * repMult(st) * shopLv(st).foot * (0.5 + 0.5 * machineVariety(st)) * eyeCatch(st) * showMult * eventMult;
   }
   function forecast(st) { return Math.round(expectedVisitors(st, st.env || startOfDay(st))); }
@@ -566,9 +551,9 @@ const Sim = (function () {
 
     const showFrom = Z.SHOW.from, showTo = Z.SHOW.to;
     const showHour = env.special ? Z.SHOW.special.mult : (env.show ? Z.SHOW.mult : 1);
-    const event = eventOf(st, st.day), vipAt = influencerTick(st);
-    R.event = event ? event.id : null;
-    const hourMult = (h) => Z.HOUR_W[h - Z.OPEN] * (h >= showFrom && h < showTo ? showHour : 1) * (event && event.hours && h >= event.hours[0] && h < event.hours[1] ? Z.EVENT.mult : 1);
+    const holiday = holidayOf(st.day), vipAt = influencerTick(st);
+    R.event = holiday ? holiday.id : null;
+    const hourMult = (h) => Z.HOUR_W[h - Z.OPEN] * (h >= showFrom && h < showTo ? showHour : 1);
     const visitorsToday = expectedVisitors(st, env);
     let wsum = 0; for (let h = Z.OPEN; h < Z.CLOSE; h++) wsum += hourMult(h);
     R.expected = Math.round(visitorsToday);
@@ -637,7 +622,6 @@ const Sim = (function () {
         let w = c.weight * (h >= tm.hours[0] && h < tm.hours[1] ? tm.mult : tm.off);
         if (weekend) w *= tm.weekend;
         if (env.show || env.special) w *= tm.show * (env.special && tm.show > 1 ? 1.4 : 1);
-        if (event && event.category === c.id) w *= Z.EVENT.category;
         return w;
       });
       return rng.pickW(list, ws);
@@ -646,7 +630,7 @@ const Sim = (function () {
     function pickTastes(cat) { // 손님 한 명의 가장 좋아하는 취향(배열로 담는다)
       const list = Object.keys(cat.tastes).filter((x) => open.indexOf(x) >= 0);
       if (!list.length) return [rng.pickW(open, open.map(() => 1))];
-      return [rng.pickW(list, list.map((x) => cat.tastes[x] * (x === st.trend.taste ? Z.TREND.demand : 1) * (event && x === event.taste ? Z.EVENT.demand : 1)))];
+      return [rng.pickW(list, list.map((x) => cat.tastes[x] * (x === st.trend.taste ? Z.TREND.demand : 1)))];
     }
 
     function pickAlso(cat, fav) { // 가장 좋아하는 것 말고 무작위로 즐기는 취향
@@ -950,15 +934,15 @@ const Sim = (function () {
   function tasteDemand(st) {
     const out = {};
     DATA.TASTES.forEach((x) => { out[x] = 0; });
-    const open = openTastes(st), show = isArenaDay(st.day), event = eventOf(st, st.day);
+    const open = openTastes(st), show = isArenaDay(st.day);
     const types = custTypes.filter((c) => c.rank <= st.rank);
-    const weight = (c) => c.weight * (show ? c.time.show : 1) * (event && event.category === c.id ? Z.EVENT.category : 1);
+    const weight = (c) => c.weight * (show ? c.time.show : 1);
     const crowd = types.reduce((s, c) => s + weight(c), 0);
     types.forEach((c) => {
       const w = weight(c) + (c.id === 'kpop' ? crowd * foreignShare(st, st.day) * Z.FOREIGN.kpop : 0);
       const list = Object.keys(c.tastes).filter((x) => open.indexOf(x) >= 0);
       const favs = list.length ? list : open;
-      const share = (x) => (list.length ? c.tastes[x] : 1) * (x === st.trend.taste ? Z.TREND.demand : 1) * (event && x === event.taste ? Z.EVENT.demand : 1);
+      const share = (x) => (list.length ? c.tastes[x] : 1) * (x === st.trend.taste ? Z.TREND.demand : 1);
       const sum = favs.reduce((s, x) => s + share(x), 0);
       favs.forEach((x) => { out[x] += w * share(x) / sum; });
       const more = c.likesOthers ? 0.5 : (c.extraLikes || 0) * 0.2; // 즐기는(가장 좋아하지는 않는) 취향의 몫
@@ -975,7 +959,7 @@ const Sim = (function () {
   function autoPrep(st, o) {
     o = o || {};
     const reserve = o.reserve != null ? o.reserve : 250000;
-    const demand = tasteDemand(st), event = eventOf(st, st.day);
+    const demand = tasteDemand(st), busy = holidayOf(st.day) ? Z.EVENT.dayMult : 1;
     const avail = DATA.DOLLS.filter((d) => orderable(st, d) || st.stock[d.id]);
     const picked = {};
     const covered = {}; // 가게 전체에서 취향이 몇 번 진열됐는지(골고루 갖추기)
@@ -1018,9 +1002,9 @@ const Sim = (function () {
       const inMachines = st.machines.reduce((n, m) => n + (m.load[id] ? m.load[id].qty : 0), 0);
       const inStock = st.stock[id] ? st.stock[id].qty : 0;
       const inc = st.incoming.filter((x) => x.id === id).reduce((n, x) => n + x.qty, 0);
-      const rush = (isArenaDay(st.day) && d.taste[0] === '아이돌') || (event && d.taste[0] === event.taste) ? 2 : 1; // 공연일·행사일에는 그 인형을 두 배 준비
+      const rush = busy * (isArenaDay(st.day) && d.taste[0] === '아이돌' ? 2 : 1); // 행사일에는 전부 넉넉히, 공연일에는 아이돌 인형을 두 배
       const want = (d.size === 'XL' ? need[id] * 5 : need[id] * 3) * rush - inMachines - inStock - inc;
-      const q = Math.min(want, cap);
+      const q = Math.min(Math.ceil(want), cap);
       if (q <= 0) return;
       const uc = unitCost(st, id, q);
       const aff = Math.min(q, Math.floor(budget / uc));
@@ -1072,6 +1056,6 @@ const Sim = (function () {
     buyMachine, sellMachine, buyEquipment, expandWarehouse, expandShop, hireStaff, setOption, order, unitCost, orderable, nextSpecial,
     loadMachine, unloadAll, refill, addStock, sellStock,
     upgradeState, canOpen, canInstall, installMachine, storeMachine, sellBin, sellEquipment, buyDecor, sellDecor, canBuyDecor, decorDef, charm, charmRaw, charmCap, checkAchievements, statValue,
-    info: { capacityOf, exchangerOn, placed, placedBins, canRefill, slotsOf, slotsUsed, loadQty, freeSlots, footUsed, stockTotal, incomingTotal, canHold, grabProb, doll, TICKS, isShowDay, isSpecialDay, eventOf, holidayOf, foreignShare, calOf, seasonOf },
+    info: { capacityOf, exchangerOn, placed, placedBins, canRefill, slotsOf, slotsUsed, loadQty, freeSlots, footUsed, stockTotal, incomingTotal, canHold, grabProb, doll, TICKS, isShowDay, isSpecialDay, holidayOf, foreignShare, calOf, seasonOf },
   };
 })();

@@ -30,7 +30,8 @@ const Cutscene = (function () {
   function fmt(text) {
     const d = State.data || {};
     const get = (key) => (key === 'name' ? d.playerName : d.shopName) || '';
-    return String(text).replace(/\{(name|shop)\}|\{(이|은|을):(name|shop)\}/g, (m, key, jo, key2) => {
+    const vars = (st && st.vars) || {};
+    return String(text).replace(/\{(trend|dolls)\}/g, (m, key) => vars[key] || '').replace(/\{(name|shop)\}|\{(이|은|을):(name|shop)\}/g, (m, key, jo, key2) => {
       if (key) return get(key);
       const word = get(key2);
       const code = word.charCodeAt(word.length - 1) - 0xAC00;
@@ -545,8 +546,9 @@ const Cutscene = (function () {
 
   // ---------- 진행 ----------
   // hooks: { input(show, rect), value() } - 가게 이름을 적는 HTML 입력칸은 main.js가 맡는다.
-  function start(now, done, hooks) {
-    st = { done, hooks: hooks || {}, inputErr: '', pt0: now, si: -1, i: 0, say: null, block: null, phase: 'in', pt: now, last: now, actors: [], emotes: [], crowd: [],
+  // script를 주지 않으면 프롤로그. vars: 대사에 끼워 넣을 값
+  function start(now, done, hooks, script, vars) {
+    st = { done, hooks: hooks || {}, script: script || DATA.STORY, vars: vars || {}, inputErr: '', pt0: now, si: -1, i: 0, say: null, block: null, phase: 'in', pt: now, last: now, actors: [], emotes: [], crowd: [],
       light: null, flash: 0, shake: 0, title: null, wait: 0, props: [], bg: 'arcade', t0: now };
     if (!arcadeImg) buildArcade();
     if (!phoneImg) buildPhoneBg();
@@ -558,8 +560,8 @@ const Cutscene = (function () {
 
   function nextScene(now) {
     st.si++;
-    if (st.si >= DATA.STORY.length) { finish(); return; }
-    const sc = DATA.STORY[st.si];
+    if (st.si >= st.script.length) { finish(); return; }
+    const sc = st.script[st.si];
     st.bg = sc.bg; st.light = sc.light || null; st.props = sc.props || [];
     st.actors = sc.actors.map((a) => Object.assign({ mv: null }, a));
     st.crowd = makeCrowd(sc.crowd || 0);
@@ -573,7 +575,7 @@ const Cutscene = (function () {
   const actor = (id) => st.actors.find((a) => a.id === id);
 
   function runSteps(now) {
-    const sc = DATA.STORY[st.si];
+    const sc = st.script[st.si];
     for (let guard = 0; guard < 100; guard++) {
       const s = sc.steps[st.i];
       if (!s) { st.phase = 'out'; st.pt = now; return; }

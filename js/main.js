@@ -129,6 +129,13 @@
     if (next === 'intro') Cutscene.start(ct(), () => { State.data.rankIntro = true; State.save(); go('shop'); }, cutHooks); // 프롤로그 컷신
   }
 
+  // 가게 화면에서 끼어드는 이야기: 끝나면(건너뛰어도) done을 부르고 가게로 돌아간다
+  function playStory(script, vars, done) {
+    go('story');
+    screen = 'intro';
+    Cutscene.start(ct(), () => { done(); State.save(); go('shop'); }, cutHooks, script, vars);
+  }
+
   // 첫 시작: 주인공 이름을 정하고 컷신으로. 저장은 가게 이름까지 정한 뒤에 한다.
   function submitName() {
     const name = input.value.trim();
@@ -401,6 +408,7 @@
     requestAnimationFrame(draw);
   }
 
+  Game.bind({ story: playStory });
   resize();
 
   // 폰트가 로드된 뒤 시작(실패해도 1.5초 후 시작)

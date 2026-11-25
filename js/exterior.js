@@ -48,7 +48,7 @@ const Exterior = (function () {
     }
   }
 
-  // 날짜 행사·동네 행사 장식(가게는 x 60~180, 지붕 y 26, 바닥 y 98)
+  // 날짜 행사 장식(가게는 x 60~180, 지붕 y 26, 바닥 y 98)
   function decorations(info, t) {
     const id = info.id;
     if (!id) return;
@@ -105,7 +105,7 @@ const Exterior = (function () {
   }
 
   // t: 시작한 뒤 흐른 시간(초). W,H,OX: 화면 크기와 가운데 영역의 위치. ctx는 가운데 영역에 맞춰 옮겨진 상태로 받는다.
-  // info: {kind 'open'|'close', season, weather, show, special, id(행사), eventName, dateText, shopName}
+  // info: {kind 'open'|'close', season, weather, show, special, id(날짜 행사), eventName, dateText, shopName}
   function draw(ctx, t, info, W, H, OX) {
     const art = Cutscene.art.street, night = info.kind === 'close';
     const key = [info.season, info.weather, night].join();
