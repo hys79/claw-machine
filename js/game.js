@@ -23,6 +23,8 @@ const Game = (function () {
   let tab = 'machine';    // 상점 탭
   let page = 0;
   let cart = {};
+  let cartPlans = null;   // 추천 담기로 채운 장바구니라면 그때의 진열 계획(주문할 때 적용)
+  let orderSize = 'all', orderFirst = null, stockSel = null, itemSel = null;
   let msg = null;         // {text, until}
   let day = null, snapshot = null, speed = 1, paused = false, acc = 0, last = null;
   let pops = [], today = null, result = null;
@@ -57,7 +59,7 @@ const Game = (function () {
     st = Sim.upgradeState(d.sim);
     ShopView.autoPlace(st);
     toasts = []; toast = null;
-    placing = null; sellAsk = null; itemPage = 0; stockTab = 'doll';
+    placing = null; sellAsk = null; itemPage = 0; stockTab = 'doll'; orderSize = 'all'; stockSel = null; itemSel = null;
     phase = 'build'; popup = null; sel = null; drag = null; day = null; result = null; msg = null; last = null; cart = {};
     save();
   }
@@ -332,7 +334,7 @@ const Game = (function () {
     sidePanel();
     const bar = (x, w, text, onClick, o) => btn(x, 514, w, 46, text, onClick, Object.assign({ size: 18 }, o));
     bar(20, 106, '상점', () => { popup = 'shop'; page = 0; });
-    bar(138, 106, '발주', () => { popup = 'order'; page = 0; cart = {}; });
+    bar(138, 106, '발주', () => openOrder());
     bar(256, 106, shortage().length ? '창고 !' : '창고', () => { popup = 'stock'; page = 0; }, shortage().length ? { style: 'danger' } : {});
     bar(374, 120, '추천 진열', () => { Sim.autoPrep(st, { order: false }); say('가진 인형으로 다시 진열했어요'); achieve(Sim.checkAchievements(st)); save(); });
     if (st.staff) bar(506, 120, '건너뛰기', skip, { style: Sim.canSkip(st).ok ? 'secondary' : 'soft' });
@@ -392,8 +394,8 @@ const Game = (function () {
       itemPage = Math.min(itemPage, pages - 1);
       label('창고 물품 ' + items.length, mid, p.y + 24, C.ink, 'center', 18);
       if (!items.length) ['창고에 넣어 둔', '물품이 없어요.', '', '상점에서 사면', '여기에 들어와요.', '', '놓은 것은 눌러서', '설정하거나 옮겨요.'].forEach((s, i) => label(s, mid, p.y + 70 + i * 24, C.sub, 'center'));
-      items.slice(itemPage * per, itemPage * per + per).forEach((it, i) => btn(p.x + 12, p.y + 46 + i * 46, p.w - 24, 36, thingName(it), () => startPlacing(it.key)));
-      if (pages > 1) btn(p.x + 12, p.y + 326, p.w - 24, 30, '더 보기 ' + (itemPage + 1) + ' / ' + pages, () => { itemPage = (itemPage + 1) % pages; });
+      items.slice(itemPage * per, itemPage * per + per).forEach((it, i) => itemTile(p.x + 12 + (i % 2) * 96, p.y + 46 + Math.floor(i / 2) * 96, 90, it, () => startPlacing(it.key)));
+      if (pages > 1) btn(p.x + 12, p.y + 336, p.w - 24, 28, '더 보기 ' + (itemPage + 1) + ' / ' + pages, () => { itemPage = (itemPage + 1) % pages; });
       label('가게 매력 ' + Sim.charmRaw(st).toFixed(1) + ' / ' + Sim.charmCap(st), mid, p.y + p.h - 50, C.blue, 'center');
       label('설치 ' + Sim.info.placed(st).length + '대', mid, p.y + p.h - 24, C.sub, 'center');
       return;
@@ -426,22 +428,68 @@ const Game = (function () {
 
   // ---------- 팝업 ----------
   const PANEL = { x: 100, y: 70, w: 760, h: 470 };
-  function popupFrame(title, titleX) {
+  const BIG = { x: 30, y: 66, w: 900, h: 494 }; // 인형 발주·창고처럼 목록이 많은 창
+  function popupFrame(title, titleX, f) {
+    f = f || PANEL;
     UI.block({ x: -600, y: 0, w: 2200, h: 576 });
     UI.rect(-600, 59, 2200, 517, C.scrim);
-    UI.panel(PANEL, C.white);
-    UI.text(title, titleX || 480, PANEL.y + 30, 22, C.ink);
-    UI.hline(PANEL.x + 20, PANEL.y + 54, PANEL.w - 40);
-    btn(PANEL.x + PANEL.w - 96, PANEL.y + 12, 80, 34, '닫기', () => { popup = null; });
+    UI.panel(f, C.white);
+    UI.text(title, titleX || 480, f.y + 30, 22, C.ink);
+    UI.hline(f.x + 20, f.y + 54, f.w - 40);
+    btn(f.x + f.w - 96, f.y + 12, 80, 34, '닫기', () => { popup = null; });
   }
-  function pager(count, per) {
+  function pager(count, per, f) {
+    f = f || PANEL;
     const pages = Math.max(1, Math.ceil(count / per));
     page = Math.min(page, pages - 1);
     if (pages > 1) {
-      btn(PANEL.x + 20, PANEL.y + PANEL.h - 50, 60, 34, '이전', () => { page = (page + pages - 1) % pages; });
-      label((page + 1) + ' / ' + pages, PANEL.x + 110, PANEL.y + PANEL.h - 33, C.sub, 'center');
-      btn(PANEL.x + 140, PANEL.y + PANEL.h - 50, 60, 34, '다음', () => { page = (page + 1) % pages; });
+      btn(f.x + 20, f.y + f.h - 50, 60, 34, '이전', () => { page = (page + pages - 1) % pages; });
+      label((page + 1) + ' / ' + pages, f.x + 110, f.y + f.h - 33, C.sub, 'center');
+      btn(f.x + 140, f.y + f.h - 50, 60, 34, '다음', () => { page = (page + 1) % pages; });
     }
+  }
+
+  // ---------- 타일과 작은 표시 ----------
+  // 정사각 타일: o = {selected, alert, draw(x, y)}
+  function tile(x, y, size, onClick, o) {
+    UI.button({ x, y, w: size, h: size }, '', { style: o.selected ? 'soft' : 'secondary', onClick, draw: (bx, by) => {
+      o.draw(bx, by);
+      const edge = o.selected ? C.blue : o.alert ? C.alert : null;
+      if (edge) [[0, 0, size, 3], [0, size - 3, size, 3], [0, 0, 3, size], [size - 3, 0, 3, size]].forEach((a) => UI.rect(bx + a[0], by + a[1], a[2], a[3], edge));
+    } });
+  }
+  // 타일 아래쪽의 이름(길면 두 줄). cy: 두 줄 영역의 가운데
+  function tileName(text, cx, cy, w) {
+    const lines = UI.wrap(text, w, 14).slice(0, 2);
+    lines.forEach((l, i) => label(l, cx, cy + (i - (lines.length - 1) / 2) * 16, C.ink, 'center'));
+  }
+  function itemTile(x, y, size, t, onClick, o) {
+    tile(x, y, size, onClick, Object.assign({ draw: (bx, by) => {
+      Icons.draw(Icons.keyOf(t), bx + size / 2 - 24, by + 5, 2);
+      tileName(thingName(t), bx + size / 2, by + size - 20, size - 6);
+    } }, o));
+  }
+  // 색 딱지. 다음 딱지를 놓을 x를 돌려준다.
+  function chip(x, y, text, fill, color) {
+    const w = Math.ceil(UI.measure(text, 14)) + 10;
+    UI.rect(x, y, w, 18, fill);
+    label(text, x + w / 2, y + 9, color || C.ink, 'center');
+    return x + w + 4;
+  }
+  const SIZE_NAME = { S: '소형', M: '중형', L: '대형', XL: '초대형' };
+  function dollChips(x, y, d) {
+    let cx = chip(x, y, SIZE_NAME[d.size], C.soft);
+    d.taste.forEach((t) => { cx = chip(cx, y, t, ShopView.TASTE_COLOR[t] || C.soft); });
+  }
+  // 창고 사용량 막대. extra: 장바구니에 담은 수
+  function capacityBar(x, y, w, extra) {
+    const cap = CFG.SIM.WAREHOUSE[st.warehouseLevel].cap, have = Sim.info.stockTotal(st), coming = Sim.info.incomingTotal(st);
+    const total = have + coming + (extra || 0), px = (n) => Math.min(w, Math.round(w * n / cap));
+    UI.framed({ x, y, w, h: 12 }, C.soft, 2);
+    UI.rect(x, y, px(total), 12, total > cap ? C.alert : '#ffb300');
+    UI.rect(x, y, px(have + coming), 12, C.blueLight);
+    UI.rect(x, y, px(have), 12, C.blue);
+    label('창고 ' + total + ' / ' + cap, x + w / 2, y + 28, total > cap ? C.alert : C.sub, 'center');
   }
 
   function drawShopPopup() {
@@ -487,49 +535,82 @@ const Game = (function () {
     });
   }
 
+  function openOrder(id) {
+    popup = 'order'; page = 0; cart = {}; cartPlans = null; orderSize = 'all';
+    orderFirst = id || null;
+    if (id) cart[id] = 10;
+  }
+  const trendy = (d) => d.taste.indexOf(st.trend.taste) >= 0;
+  function orderCard(x, y, d) {
+    const W = 212, H = 174, q = cart[d.id] || 0;
+    const have = stockQty(d.id) + loadedTotal(d.id), coming = comingQty(d.id), used = st.used[d.id] || 0, low = shortage().indexOf(d.id) >= 0;
+    UI.framed({ x, y, w: W, h: H }, q ? '#eaf4fd' : C.white, 2, q ? C.blue : C.edge);
+    UI.rect(x + 8, y + 8, 50, 50, C.soft);
+    ShopView.dollIcon(x + 15, y + 15, d, 5);
+    const name = UI.wrap(d.name, W - 74, 14).slice(0, 2);
+    name.forEach((l, i) => label(l, x + 66, y + (name.length > 1 ? 18 + i * 17 : 22)));
+    let cx = x + 66;
+    if (trendy(d)) cx = chip(cx, y + 42, '유행', '#e6d3f5', '#6a2f9f');
+    if (low) cx = chip(cx, y + 42, '부족', C.alert, C.white);
+    if (d.special) chip(cx, y + 42, '한정', '#ffd84a');
+    dollChips(x + 8, y + 66, d);
+    const unit = Sim.unitCost(st, d.id, Math.max(1, q)), off = unit < Sim.unitCost(st, d.id, 1);
+    label('개당 ' + won(unit) + (off ? ' (할인)' : ''), x + 8, y + 100, off ? C.blue : C.ink);
+    label('가진 수 ' + have + (coming ? ' (+' + coming + ')' : '') + (used ? ' · 소진 ' + used : ''), x + 8, y + 119, low ? C.alert : C.sub);
+    const add = (n) => { cart[d.id] = Math.max(0, q + n); if (!cart[d.id]) delete cart[d.id]; };
+    const by = y + H - 40;
+    btn(x + 8, by, 40, 32, '-10', () => add(-10), { disabled: !q });
+    btn(x + 52, by, 34, 32, '-', () => add(-1), { disabled: !q });
+    label(String(q), x + 107, by + 16, q ? C.blue : C.sub, 'center', 22);
+    btn(x + 128, by, 34, 32, '+', () => add(1));
+    btn(x + 166, by, 40, 32, '+10', () => add(10));
+  }
   function drawOrderPopup() {
-    popupFrame('인형 발주');
-    const list = DATA.DOLLS.filter((d) => Sim.orderable(st, d))
-      .sort((a, b) => (b.taste.indexOf(st.trend.taste) >= 0) - (a.taste.indexOf(st.trend.taste) >= 0));
-    const per = 7;
-    pager(list.length, per);
-    label('인형 (크기 · 취향)', PANEL.x + 56, PANEL.y + 70, C.sub);
-    label('단가', PANEL.x + 400, PANEL.y + 70, C.sub, 'right');
-    label('보유', PANEL.x + 470, PANEL.y + 70, C.sub, 'right');
-    label('주문 수량', PANEL.x + 600, PANEL.y + 70, C.sub, 'center');
+    popupFrame('인형 발주', 105, BIG);
+    const all = DATA.DOLLS.filter((d) => Sim.orderable(st, d));
+    const sizes = ['all'].concat(['S', 'M', 'L', 'XL'].filter((z) => all.some((d) => d.size === z)));
+    sizes.forEach((z, i) => btn(BIG.x + 160 + i * 86, BIG.y + 12, 78, 34, z === 'all' ? '전체' : SIZE_NAME[z], () => { orderSize = z; page = 0; }, { style: orderSize === z ? 'primary' : 'secondary' }));
+    const short = shortage();
+    const score = (d) => (d.id === orderFirst ? 4 : 0) + (short.indexOf(d.id) >= 0 ? 2 : 0) + (trendy(d) ? 1 : 0);
+    const list = all.filter((d) => orderSize === 'all' || d.size === orderSize).sort((a, b) => score(b) - score(a));
+    const per = 6;
+    pager(list.length, per, BIG);
+    const miss = (st.lastMissed || []).join(', ');
+    label('이번 주 유행: ' + st.trend.taste + (miss ? '   ·   손님이 찾던 취향: ' + miss : ''), BIG.x + 20, BIG.y + 74, '#6a2f9f');
+    list.slice(page * per, page * per + per).forEach((d, i) => orderCard(BIG.x + 20 + (i % 3) * 220, BIG.y + 90 + Math.floor(i / 3) * 180, d));
+    // 장바구니
+    const x = BIG.x + 684, w = 196, mid = x + w / 2, top = BIG.y + 66;
+    UI.framed({ x, y: top, w, h: BIG.h - 78 }, C.bg, 2, C.edge);
+    label('장바구니', mid, top + 20, C.ink, 'center', 18);
+    const ids = Object.keys(cart);
     let total = 0, count = 0;
-    Object.keys(cart).forEach((id) => { total += Sim.unitCost(st, id, cart[id]) * cart[id]; count += cart[id]; });
-    list.slice(page * per, page * per + per).forEach((d, i) => {
-      const y = PANEL.y + 86 + i * 44;
-      const trend = d.taste.indexOf(st.trend.taste) >= 0;
-      const q = cart[d.id] || 0;
-      const have = (st.stock[d.id] ? st.stock[d.id].qty : 0) + st.machines.reduce((n, m) => n + (m.load[d.id] ? m.load[d.id].qty : 0), 0);
-      const coming = st.incoming.filter((x) => x.id === d.id).reduce((n, x) => n + x.qty, 0);
-      ShopView.dollIcon(PANEL.x + 26, y + 8, d, 3);
-      label(d.name + (d.special ? ' [한정]' : ''), PANEL.x + 56, y + 10);
-      label(d.size + ' · ' + d.taste.join(', ') + (trend ? '  ★유행' : ''), PANEL.x + 56, y + 30, trend ? '#8a4fc0' : C.sub);
-      label(won(Sim.unitCost(st, d.id, Math.max(1, q))), PANEL.x + 400, y + 20, C.ink, 'right');
-      label(have + (coming ? ' +' + coming : ''), PANEL.x + 470, y + 20, C.ink, 'right');
-      const add = (n) => { cart[d.id] = Math.max(0, q + n); if (!cart[d.id]) delete cart[d.id]; };
-      btn(PANEL.x + 490, y + 4, 40, 32, '-10', () => add(-10));
-      btn(PANEL.x + 536, y + 4, 28, 32, '-', () => add(-1));
-      label(String(q), PANEL.x + 600, y + 20, q ? C.blue : C.sub, 'center', 18);
-      btn(PANEL.x + 636, y + 4, 28, 32, '+', () => add(1));
-      btn(PANEL.x + 670, y + 4, 40, 32, '+10', () => add(10));
+    ids.forEach((id) => { total += Sim.unitCost(st, id, cart[id]) * cart[id]; count += cart[id]; });
+    if (!ids.length) ['담은 인형이 없어요.', '[+]로 담거나', '[추천 담기]를 눌러요.'].forEach((t, i) => label(t, mid, top + 62 + i * 20, C.sub, 'center'));
+    ids.slice(0, ids.length > 6 ? 5 : 6).forEach((id, i) => {
+      const y = top + 46 + i * 24, d = Sim.info.doll(id);
+      ShopView.dollIcon(x + 8, y, d, 2);
+      label(UI.wrap(d.name, w - 78, 14)[0], x + 28, y + 8);
+      label('×' + cart[id], x + w - 8, y + 8, C.blue, 'right');
     });
-    const by = PANEL.y + PANEL.h - 50;
-    label('합계 ' + won(total) + ' (' + count + '개)', PANEL.x + 420, by + 6, total > st.money ? C.alert : C.ink, 'right', 18);
-    label('창고 ' + (Sim.info.stockTotal(st) + Sim.info.incomingTotal(st) + count) + ' / ' + CFG.SIM.WAREHOUSE[st.warehouseLevel].cap, PANEL.x + 420, by + 30, C.sub, 'right');
-    btn(PANEL.x + 450, by, 140, 36, '추천 발주', () => {
-      const r = Sim.autoPrep(st);
-      const n = r.ordered.reduce((s, x) => s + x.qty, 0);
-      say(n ? n + '개를 주문하고 진열했어요' : '더 주문할 인형이 없어요'); cart = {}; save();
+    if (ids.length > 6) label('외 ' + (ids.length - 5) + '종', mid, top + 46 + 5 * 24 + 8, C.sub, 'center');
+    label('합계', x + 8, top + 206, C.sub);
+    label(won(total), x + w - 8, top + 206, total > st.money ? C.alert : C.ink, 'right', 18);
+    label('남는 돈', x + 8, top + 230, C.sub);
+    label(won(st.money - total), x + w - 8, top + 230, total > st.money ? C.alert : C.sub, 'right');
+    capacityBar(x + 10, top + 248, w - 20, count);
+    label('다음 영업 아침에 도착', mid, top + 296, C.sub, 'center');
+    btn(x + 8, top + 314, 114, 34, '추천 담기', () => {
+      const r = Sim.recommendOrder(st);
+      if (!r.lines.length) { say(installed() ? '지금은 더 주문할 인형이 없어요' : '기계를 먼저 설치하면 추천해 드려요'); return; }
+      cart = {}; r.lines.forEach((l) => { cart[l.id] = l.qty; }); cartPlans = r.plans;
     });
-    btn(PANEL.x + 604, by, 136, 36, '주문하기', () => {
+    btn(x + 130, top + 314, w - 138, 34, '비우기', () => { cart = {}; cartPlans = null; }, { disabled: !count });
+    btn(x + 8, top + 358, w - 16, 48, '주문하기', () => {
       const r = Sim.order(st, Object.keys(cart).map((id) => ({ id, qty: cart[id] })));
+      if (r.ok && cartPlans) cartPlans.forEach((p) => { const m = st.machines.find((v) => v.id === p.id); if (m && Object.keys(p.plan).length) { m.plan = p.plan; m.manual = false; } });
       done(r, r.ok ? r.qty + '개 주문 완료. 다음 영업 아침에 와요' : '');
-      if (r.ok) cart = {};
-    }, { style: 'primary', disabled: !count });
+      if (r.ok) { cart = {}; cartPlans = null; }
+    }, { style: 'primary', disabled: !count, size: 18 });
   }
 
   // 진열: 기계에 넣을 인형 수를 정한다(창고에 있는 인형만).
@@ -571,50 +652,80 @@ const Game = (function () {
 
   // ---------- 창고 ----------
   function stockTabs() {
-    [['doll', '인형'], ['item', '물품']].forEach(([k, t], i) => btn(PANEL.x + 20 + i * 90, PANEL.y + 12, 82, 34, t, () => { stockTab = k; page = 0; }, { style: stockTab === k ? 'primary' : 'secondary' }));
+    [['doll', '인형'], ['item', '물품']].forEach(([k, t], i) => btn(BIG.x + 20 + i * 90, BIG.y + 12, 82, 34, t, () => { stockTab = k; page = 0; sellAsk = null; }, { style: stockTab === k ? 'primary' : 'secondary' }));
+  }
+  const GRID = { cols: 6, rows: 3, size: 102, gap: 8 };
+  const gridPos = (i) => ({ x: BIG.x + 20 + (i % GRID.cols) * (GRID.size + GRID.gap), y: BIG.y + 70 + Math.floor(i / GRID.cols) * (GRID.size + GRID.gap) });
+  // 오른쪽의 자세히 보기 칸
+  function detailBox() {
+    const b = { x: BIG.x + 684, y: BIG.y + 66, w: 196, h: BIG.h - 78 };
+    UI.framed(b, C.bg, 2, C.edge);
+    return b;
   }
   function drawItemList() {
-    popupFrame('창고 물품');
+    popupFrame('창고 물품', null, BIG);
     stockTabs();
-    const items = ShopView.stored(st), per = 6;
-    pager(items.length, per);
-    if (!items.length) label('창고에 넣어 둔 물품이 없어요.', 480, 290, C.sub, 'center', 18);
-    items.slice(page * per, page * per + per).forEach((t, i) => {
-      const y = PANEL.y + 70 + i * 54, price = sellPrice(t);
-      label(thingName(t), PANEL.x + 40, y + 22, C.ink, 'left', 18);
-      label(t.kind === 'machine' ? '기계 칸 ' + t.w : t.kind === 'decor' ? '매력 ' + t.def.charm : '설비', PANEL.x + 380, y + 22, C.sub);
-      btn(PANEL.x + 500, y + 4, 100, 36, '설치', () => startPlacing(t.key), { style: 'primary' });
-      btn(PANEL.x + 612, y + 4, 128, 36, sellAsk === t.key ? '한 번 더' : price ? '팔기 ' + man(price) : '팔 수 없음', () => sellThing(t), { disabled: !price, style: sellAsk === t.key ? 'danger' : 'secondary' });
-      UI.hline(PANEL.x + 20, y + 48, PANEL.w - 40);
-    });
+    const items = ShopView.stored(st), per = GRID.cols * GRID.rows;
+    pager(items.length, per, BIG);
+    if (!items.length) { label('창고에 넣어 둔 물품이 없어요.', 480, 290, C.sub, 'center', 18); return; }
+    const shown = items.slice(page * per, page * per + per);
+    const t = shown.find((v) => v.key === itemSel) || shown[0];
+    shown.forEach((it, i) => { const p = gridPos(i); itemTile(p.x, p.y, GRID.size, it, () => { itemSel = it.key; sellAsk = null; }, { selected: it.key === t.key }); });
+    const b = detailBox(), mid = b.x + b.w / 2, price = sellPrice(t);
+    Icons.draw(Icons.keyOf(t), mid - 48, b.y + 16, 4);
+    UI.wrap(thingName(t), b.w - 16, 18).slice(0, 2).forEach((l, i) => label(l, mid, b.y + 134 + i * 22, C.ink, 'center', 18));
+    const info = t.kind === 'machine' ? ['기계 칸 ' + t.w, '넣는 크기 ' + DATA.MACHINES[t.ref.type].sizes.map((z) => SIZE_NAME[z]).join('·')]
+      : t.kind === 'decor' ? [(t.def.wall ? '벽 소품' : '바닥 소품'), '매력 ' + t.def.charm] : t.kind === 'bin' ? ['손님 쓰레기를', '모아요'] : ['설비'];
+    info.forEach((s, i) => UI.wrap(s, b.w - 12, 14).slice(0, 2).forEach((l, j) => label(l, mid, b.y + 184 + i * 40 + j * 18, C.sub, 'center')));
+    btn(b.x + 10, b.y + b.h - 102, b.w - 20, 46, '설치', () => startPlacing(t.key), { style: 'primary', size: 18 });
+    btn(b.x + 10, b.y + b.h - 46, b.w - 20, 36, sellAsk === t.key ? '한 번 더 눌러 팔기' : price ? '팔기 ' + man(price) : '팔 수 없음', () => sellThing(t), { disabled: !price, style: sellAsk === t.key ? 'danger' : 'secondary' });
   }
   function drawStockPopup() {
     if (stockTab === 'item') { drawItemList(); return; }
-    const cap = CFG.SIM.WAREHOUSE[st.warehouseLevel].cap, next = CFG.SIM.WAREHOUSE[st.warehouseLevel + 1];
-    popupFrame('창고 인형  ' + Sim.info.stockTotal(st) + ' / ' + cap);
+    const next = CFG.SIM.WAREHOUSE[st.warehouseLevel + 1];
+    popupFrame('창고 인형', null, BIG);
     stockTabs();
     const short = shortage();
-    const ids = DATA.DOLLS.map((d) => d.id).filter((id) => stockQty(id) || comingQty(id) || short.indexOf(id) >= 0)
-      .sort((a, b) => (short.indexOf(b) >= 0) - (short.indexOf(a) >= 0));
-    const per = 7;
-    pager(ids.length, per);
-    ['창고', '진열 중', '입고 예정', '지난 영업'].forEach((s, i) => label(s, PANEL.x + 300 + i * 80, PANEL.y + 70, C.sub, 'right'));
-    label('처분(원가의 ' + Math.round(CFG.SIM.STOCK_SELL * 100) + '%)', PANEL.x + 650, PANEL.y + 70, C.sub, 'center');
-    if (!ids.length) label('창고가 비었어요. 발주해 주세요.', 480, 290, C.sub, 'center', 18);
-    ids.slice(page * per, page * per + per).forEach((id, i) => {
-      const d = Sim.info.doll(id), y = PANEL.y + 86 + i * 44, low = short.indexOf(id) >= 0;
-      ShopView.dollIcon(PANEL.x + 26, y + 8, d, 3);
-      label(d.name, PANEL.x + 56, y + 10);
-      label(low ? '모자랄 수 있어요!' : d.size + ' · ' + d.taste.join(', '), PANEL.x + 56, y + 30, low ? C.alert : C.sub);
-      [stockQty(id), loadedTotal(id), comingQty(id), st.used[id] || 0].forEach((v, k) => label(String(v), PANEL.x + 300 + k * 80, y + 20, k === 0 && low ? C.alert : C.ink, 'right'));
-      const sell = (n) => { const r = Sim.sellStock(st, id, n); done(r, r.ok ? r.qty + '개 처분 +' + won(r.gain) : ''); };
-      const none = !stockQty(id);
-      btn(PANEL.x + 575, y + 4, 44, 32, '1', () => sell(1), { disabled: none });
-      btn(PANEL.x + 627, y + 4, 44, 32, '10', () => sell(10), { disabled: none });
-      btn(PANEL.x + 679, y + 4, 60, 32, '전부', () => sell(stockQty(id)), { disabled: none });
+    const order = (id) => (short.indexOf(id) >= 0 ? 0 : stockQty(id) ? 1 : 2);
+    const ids = DATA.DOLLS.map((d) => d.id).filter((id) => stockQty(id) || comingQty(id) || short.indexOf(id) >= 0).sort((a, b) => order(a) - order(b));
+    const per = GRID.cols * GRID.rows;
+    pager(ids.length, per, BIG);
+    capacityBar(BIG.x + 250, BIG.y + BIG.h - 46, 200);
+    if (next) btn(BIG.x + 470, BIG.y + BIG.h - 50, 204, 36, '확장 ' + next.cap + '개 · ' + man(next.cost), () => done(Sim.expandWarehouse(st), '창고를 넓혔어요'));
+    if (!ids.length) {
+      label('창고가 비었어요.', 360, 270, C.sub, 'center', 18);
+      btn(280, 300, 160, 42, '발주하러 가기', () => openOrder(), { style: 'primary' });
+      return;
+    }
+    const shown = ids.slice(page * per, page * per + per);
+    const id = shown.indexOf(stockSel) >= 0 ? stockSel : shown[0];
+    shown.forEach((v, i) => {
+      const p = gridPos(i), d = Sim.info.doll(v), low = short.indexOf(v) >= 0, coming = comingQty(v);
+      tile(p.x, p.y, GRID.size, () => { stockSel = v; }, { selected: v === id, alert: low, draw: (bx, by) => {
+        ShopView.dollIcon(bx + 10, by + 10, d, 4);
+        label(String(stockQty(v)), bx + GRID.size - 10, by + 20, low ? C.alert : C.ink, 'right', 22);
+        if (coming) label('+' + coming, bx + GRID.size - 10, by + 42, C.blue, 'right');
+        tileName(d.name, bx + GRID.size / 2, by + GRID.size - 26, GRID.size - 8);
+      } });
     });
-    if (next) btn(PANEL.x + 500, PANEL.y + PANEL.h - 50, 240, 36, '확장 ' + next.cap + '개 · ' + man(next.cost), () => done(Sim.expandWarehouse(st), '창고를 넓혔어요'), { style: 'primary' });
-    btn(PANEL.x + 360, PANEL.y + PANEL.h - 50, 128, 36, '발주하기', () => { popup = 'order'; page = 0; cart = {}; });
+    label('큰 숫자 = 창고에 있는 수 · 파란 + = 입고 예정 · 빨간 테두리 = 모자랄 수 있음', BIG.x + 20, BIG.y + 412, C.sub);
+    const d = Sim.info.doll(id), b = detailBox(), mid = b.x + b.w / 2;
+    ShopView.dollIcon(mid - 28, b.y + 14, d, 8);
+    UI.wrap(d.name, b.w - 12, 14).slice(0, 2).forEach((l, i) => label(l, mid, b.y + 86 + i * 18, C.ink, 'center'));
+    let cx = b.x + 8;
+    cx = chip(cx, b.y + 122, SIZE_NAME[d.size], C.soft);
+    d.taste.forEach((t) => { cx = chip(cx, b.y + 122, t, ShopView.TASTE_COLOR[t] || C.soft); });
+    [['창고', stockQty(id)], ['기계에 진열 중', loadedTotal(id)], ['입고 예정', comingQty(id)], ['지난 영업 소진', st.used[id] || 0]].forEach(([k, v], i) => {
+      const y = b.y + 160 + i * 24;
+      label(k, b.x + 10, y, C.sub);
+      label(v + '개', b.x + b.w - 10, y, C.ink, 'right');
+    });
+    if (short.indexOf(id) >= 0) label('모자랄 수 있어요!', mid, b.y + 262, C.alert, 'center');
+    btn(b.x + 10, b.y + 280, b.w - 20, 42, '이 인형 발주', () => openOrder(id), { style: 'primary', disabled: !Sim.orderable(st, d) });
+    label('처분(원가의 ' + Math.round(CFG.SIM.STOCK_SELL * 100) + '%)', mid, b.y + 344, C.sub, 'center');
+    const sell = (n) => { const r = Sim.sellStock(st, id, n); done(r, r.ok ? r.qty + '개 처분 +' + won(r.gain) : ''); };
+    const none = !stockQty(id);
+    [['1개', 1], ['10개', 10], ['전부', 0]].forEach(([t, n], i) => btn(b.x + 10 + i * 60, b.y + 360, 56, 36, t, () => sell(n || stockQty(id)), { disabled: none }));
   }
 
   // ---------- 영업 화면 ----------
@@ -783,8 +894,10 @@ const Game = (function () {
     drawTutorial(now);
     drawDev();
     if (msg && now < msg.until) {
-      UI.chip({ x: 250, y: 66, w: 460, h: 32 });
-      label(msg.text, 480, 82, C.ink, 'center');
+      const low = popup === 'order' || popup === 'stock';
+      const m = low ? { x: 290, y: 520, w: 380, h: 28 } : { x: 250, y: 66, w: 460, h: 32 };
+      UI.chip(m);
+      label(msg.text, m.x + m.w / 2, m.y + m.h / 2, C.ink, 'center');
     }
     if (toast && now > toast.until) toast = null;
     if (!toast && toasts.length) { toast = { a: toasts.shift(), until: now + (toasts.length > 2 ? 1.2 : 2.5) }; Sound.sfx('fanfare'); }

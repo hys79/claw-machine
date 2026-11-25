@@ -838,6 +838,12 @@ const Sim = (function () {
     });
     return out;
   }
+  // 추천 발주 미리 보기: 상태를 바꾸지 않고, 주문할 목록과 그때의 기계별 진열 계획만 알려 준다.
+  function recommendOrder(st) {
+    const copy = JSON.parse(JSON.stringify(st));
+    const r = autoPrep(copy);
+    return { lines: r.ordered, plans: copy.machines.map((m) => ({ id: m.id, plan: m.plan })) };
+  }
   function autoPrep(st, o) {
     o = o || {};
     const reserve = o.reserve != null ? o.reserve : 250000;
@@ -939,7 +945,7 @@ const Sim = (function () {
 
   return {
     rankNo, rankName, leaderboard,
-    newGame, startOfDay, openDay, runDay, canSkip, skipDay, forecast, autoPrep,
+    newGame, startOfDay, openDay, runDay, canSkip, skipDay, forecast, autoPrep, recommendOrder,
     buyMachine, sellMachine, buyEquipment, expandWarehouse, expandShop, hireStaff, setOption, order, unitCost, orderable, nextSpecial,
     loadMachine, unloadAll, refill, addStock, sellStock,
     upgradeState, canOpen, canInstall, installMachine, storeMachine, sellBin, sellEquipment, buyDecor, sellDecor, canBuyDecor, decorDef, charm, charmRaw, charmCap, checkAchievements, statValue,

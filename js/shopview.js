@@ -159,7 +159,7 @@ const ShopView = (function () {
     const items = [];
     Object.keys(m.load).forEach((id) => { for (let i = 0; i < m.load[id].qty; i++) items.push(Sim.info.doll(id)); });
     if (DATA.MACHINES[m.type].kind === 'timer') {
-      const s = glass.w < 34 ? 3 : 4;
+      const s = Math.min(glass.w < 34 ? 3 : 4, Math.floor((glass.h - 1) / 7));
       if (items.length) dollIcon(glass.x + glass.w / 2 - 3.5 * s, glass.y + glass.h - 7 * s - 1, items[0], s);
     } else {
       const per = Math.max(1, Math.floor((glass.w - 2) / 11)), show = Math.min(items.length, per * rows);
@@ -172,40 +172,113 @@ const ShopView = (function () {
     return items.length;
   }
   // 기계 하나. o: {down}. 회전 0 앞 / 1 왼쪽 / 2 뒤 / 3 오른쪽
+  // 네 방향 모두 같은 몸통이다: 윗면(지붕) 아래에 높이 72의 옆면 = 간판 12 · 유리 33 · 조종대 9 · 받침 13 · 다리 4.
+  // 옆으로 돌린 대형 기계는 안쪽으로 긴 만큼 지붕이 길게 보인다.
+  const FACE = 72;
+  const SHADE = 'rgba(10,30,50,0.28)', SHINE = 'rgba(255,255,255,0.55)';
+  const feet = (x, w, y) => { UI.rect(x + 2, y, 7, 4, C.ink); UI.rect(x + w - 9, y, 7, 4, C.ink); };
+  function glassBox(m, g, o, rows) {
+    UI.framed(g, o.down ? '#8b98a5' : '#d8f1ff', 2);
+    UI.rect(g.x, g.y, g.w, 3, '#aac4d8'); // 집게가 다니는 레일
+    const n = inside(m, g, rows);
+    for (let i = 0; i < 9; i++) UI.rect(g.x + 11 - i, g.y + 5 + i, 2, 1, SHINE); // 유리 반사
+    return n;
+  }
+  function roofTop(x, y, w, roof, col) {
+    UI.rect(x, y, w, roof, col[0]);
+    UI.rect(x + 3, y + 2, w - 6, 3, SHINE);
+    UI.rect(x, y + roof - 1, w, 1, C.ink);
+  }
+  function front(m, x, y, w, h, o, col, timer) {
+    const roof = h - FACE, f = y + roof;
+    UI.framed({ x, y, w, h: h - 4 }, col[1], 2);
+    feet(x, w, y + h - 4);
+    roofTop(x, y, w, roof, col);
+    // 간판(불 켜진 상자)
+    UI.rect(x, f, w, 12, col[0]);
+    UI.rect(x + 3, f + 1, w - 6, 10, timer ? C.ink : '#ffffff');
+    if (timer) UI.text('10.00', x + w / 2, f + 6, 14, '#ffd84a');
+    else for (let i = 0; i * 9 + 11 <= w - 6; i++) UI.rect(x + 7 + i * 9, f + 4, 4, 4, i % 2 ? col[0] : '#ffb300');
+    const count = glassBox(m, { x: x + 4, y: f + 14, w: w - 8, h: 31 }, o, 3);
+    // 앞으로 튀어나온 조종대: 밝은 윗면 + 앞 모서리
+    UI.framed({ x: x - 2, y: f + 48, w: w + 4, h: 7 }, col[0], 1);
+    UI.rect(x - 2, f + 48, w + 4, 3, '#e4eff8');
+    if (timer) { UI.framed({ x: x + w / 2 - 7, y: f + 45, w: 14, h: 5 }, '#d9455f', 1); }
+    else {
+      const jx = x + Math.round(w * 0.26);
+      UI.rect(jx, f + 43, 2, 7, C.ink); UI.framed({ x: jx - 2, y: f + 40, w: 6, h: 5 }, '#d9455f', 1);
+      UI.framed({ x: x + Math.round(w * 0.64), y: f + 47, w: 6, h: 3 }, '#ffd84a', 1);
+      if (w > 60) UI.framed({ x: x + Math.round(w * 0.78), y: f + 47, w: 6, h: 3 }, '#7ccf6a', 1);
+    }
+    // 받침: 동전 투입구와 경품 나오는 문
+    UI.framed({ x: x + 6, y: f + 58, w: 7, h: 8 }, '#c9d9e6', 1); UI.rect(x + 9, f + 60, 1, 4, C.ink);
+    const dw = Math.min(30, Math.round(w * 0.42)), dx = x + w - dw - 5;
+    UI.framed({ x: dx, y: f + 58, w: dw, h: 9 }, '#14324d', 1); UI.rect(dx + 2, f + 59, dw - 4, 3, '#5f7a92');
+    return count;
+  }
+  function back(m, x, y, w, h, o, col) {
+    const roof = h - FACE, f = y + roof;
+    UI.framed({ x, y, w, h: h - 4 }, col[1], 2);
+    feet(x, w, y + h - 4);
+    roofTop(x, y, w, roof, col);
+    UI.rect(x, f, w, 12, col[0]); // 간판 뒷판(나사)
+    [x + 4, x + w - 7].forEach((sx) => UI.rect(sx, f + 4, 3, 3, C.ink));
+    const count = glassBox(m, { x: x + 7, y: f + 14, w: w - 14, h: 23 }, o, 2);
+    UI.rect(x, f + 40, w, FACE - 44, col[1]);
+    UI.rect(x, f + 40, w, 2, C.ink);
+    // 점검문(자물쇠, 통풍구)과 바닥으로 내려가는 전선
+    UI.framed({ x: x + 6, y: f + 45, w: w - 18, h: 19 }, col[0], 1);
+    for (let i = 0; i < 3; i++) UI.rect(x + 11, f + 49 + i * 5, w - 34, 2, C.ink);
+    UI.rect(x + w - 19, f + 53, 3, 4, '#ffd84a');
+    UI.rect(x + w - 7, f + 55, 2, 13, C.ink); UI.rect(x + w - 7, f + 68, 10, 2, C.ink);
+    UI.rect(x, y, w, h - 4, 'rgba(10,30,50,0.08)');
+    return count;
+  }
+  // 왼쪽을 보는 옆모습(오른쪽을 보면 좌우를 뒤집는다). 조종대가 앞(왼쪽)으로 비스듬히 튀어나온다.
+  function side(m, x, y, w, h, o, col) {
+    const roof = h - FACE, f = y + roof, bx = x + 8, bw = w - 8;
+    UI.framed({ x: bx, y, w: bw, h: h - 4 }, col[1], 2);
+    feet(bx, bw, y + h - 4);
+    roofTop(bx, y, bw, roof, col);
+    if (roof > 20) { // 긴 지붕: 덮개와 통풍구
+      UI.framed({ x: bx + 8, y: y + 10, w: bw - 16, h: roof - 24 }, col[0], 1);
+      UI.rect(bx + 8, y + 10, bw - 16, 3, SHINE);
+      for (let i = 0; i < 4; i++) UI.rect(bx + 13, y + roof - 36 + i * 5, bw - 26, 2, col[1]);
+    }
+    UI.rect(bx, y + 1, 4, roof - 2, '#ffffff'); // 앞쪽 지붕 모서리의 조명 띠
+    for (let i = 6; i < roof - 4; i += 9) UI.rect(bx + 1, y + i, 2, 3, '#ffb300');
+    // 간판 옆면: 앞으로 살짝 튀어나온 조명 상자
+    UI.rect(bx, f, bw, 12, col[0]);
+    UI.framed({ x: bx - 2, y: f + 2, w: bw - 2, h: 8 }, '#ffffff', 1);
+    for (let i = 3; i + 4 <= bw - 4; i += 9) UI.rect(bx + i, f + 4, 4, 4, (i / 9) % 2 < 1 ? '#ffb300' : col[0]);
+    const count = glassBox(m, { x: bx + 4, y: f + 14, w: bw - 9, h: 31 }, o, 3);
+    // 조종대 옆모습(아래로 갈수록 앞으로 나온 경사)과 조종간
+    for (let i = 0; i < 10; i++) {
+      const p = Math.min(8, 2 + i);
+      UI.rect(bx - p - 1, f + 46 + i, p + 1, 1, C.ink);
+      UI.rect(bx - p, f + 46 + i, p, 1, i < 3 || i === 9 ? (i === 9 ? C.ink : '#e4eff8') : col[0]);
+    }
+    if (DATA.MACHINES[m.type].kind === 'timer') UI.framed({ x: bx - 6, y: f + 42, w: 7, h: 4 }, '#d9455f', 1);
+    else { UI.rect(bx - 5, f + 40, 2, 8, C.ink); UI.framed({ x: bx - 7, y: f + 37, w: 5, h: 4 }, '#d9455f', 1); }
+    // 받침 옆면: 장식 띠와 통풍구, 뒤쪽 그늘
+    UI.rect(bx, f + 59, bw, 2, col[0]);
+    for (let i = 0; i < 3; i++) UI.rect(bx + bw - 20 + i * 5, f + 63, 2, 4, C.ink);
+    UI.rect(bx + bw - 4, y, 4, h - 4, SHADE);
+    UI.rect(bx, y + roof, 2, FACE - 4, SHINE);
+    return count;
+  }
   function machine(m, r, o) {
     const def = DATA.MACHINES[m.type], col = CABINET[m.type], rot = m.rot || 0, timer = def.kind === 'timer';
     const x = r.x, y = r.y, w = r.w, h = r.h;
     UI.rect(x + 4, y + h - 4, w, 8, 'rgba(20,50,77,0.25)');
-    UI.framed({ x, y, w, h }, col[0], 2);
-    UI.rect(x, y, w, 14, '#ffffff'); UI.rect(x + 3, y + 3, w - 6, 8, col[0]); // 윗면
-    const glassColor = o.down ? '#8b98a5' : '#d8f1ff';
-    let count;
-    if (rot === 0) {
-      const glass = { x: x + 5, y: y + 18, w: w - 10, h: h - 38 };
-      UI.framed(glass, glassColor, 2);
-      count = inside(m, glass, 3);
-      if (timer) UI.text('10.00', x + w / 2, glass.y + 8, 14, C.alert);
-      UI.rect(x, y + h - 16, w, 16, col[1]);
-      UI.rect(x + w / 2 - 8, y + h - 11, 5, 5, '#ffd84a'); UI.rect(x + w / 2 + 3, y + h - 11, 5, 5, '#d9455f');
-    } else if (rot === 2) { // 뒷모습: 위쪽 작은 창과 뒷판(통풍구, 전선)
-      const glass = { x: x + 8, y: y + 18, w: w - 16, h: 24 };
-      UI.framed(glass, glassColor, 2);
-      count = inside(m, glass, 1);
-      UI.rect(x, y + 46, w, h - 46, col[1]);
-      for (let i = 0; i < 3; i++) UI.rect(x + 10, y + 52 + i * 7, w - 20, 3, col[0]);
-      UI.rect(x + w - 12, y + h - 8, 6, 8, C.ink);
-    } else { // 옆모습: 앞면 쪽으로 조작대가 튀어나온다
-      const left = rot === 1, glass = { x: x + (left ? 14 : 5), y: y + 18, w: w - 19, h: h - 36 };
-      UI.framed(glass, glassColor, 2);
-      count = inside(m, glass, Math.max(3, Math.floor((glass.h - 20) / 9)));
-      UI.rect(x, y + h - 14, w, 14, col[1]);
-      const sx = left ? x - 5 : x + w - 8;
-      UI.framed({ x: sx, y: y + h - 44, w: 13, h: 28 }, col[1], 2);
-      UI.rect(sx + 4, y + h - 38, 5, 5, '#ffd84a'); UI.rect(sx + 4, y + h - 27, 5, 5, '#d9455f');
-      if (timer) UI.text('10', glass.x + glass.w / 2, glass.y + 8, 14, C.alert);
-    }
-    if (!count) UI.text(w < 56 ? '빔' : '비었음', x + w / 2, y + (rot === 2 ? 30 : h / 2 - 6), 14, C.alert);
-    if (m.mods.durable) UI.rect(x + 3, y + h - 12, 6, 6, '#ffffff');
+    let count = 0;
+    if (rot === 0) count = front(m, x, y, w, h, o, col, timer);
+    else if (rot === 2) count = back(m, x, y, w, h, o, col);
+    else if (rot === 1) count = side(m, x, y, w, h, o, col);
+    else UI.mirror(x + w / 2, () => { count = side(m, x, y, w, h, o, col); });
+    const tx = x + w / 2 + (rot === 1 ? 4 : rot === 3 ? -4 : 0);
+    if (!count) UI.text(w < 56 ? '빔' : '비었음', tx, y + h - FACE + (rot === 2 ? 26 : 30), 14, C.alert);
+    if (m.mods.durable) UI.rect(x + (rot === 1 ? 11 : 3), y + h - 12, 5, 5, '#ffffff');
   }
 
   function bin(big, r) {

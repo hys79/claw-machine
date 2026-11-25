@@ -104,6 +104,9 @@ const UI = (function () {
     return lines;
   }
 
+  // 글자 폭(논리 크기)
+  function measure(str, size) { ctx.font = font(size); return ctx.measureText(str).width; }
+
   // ---------- 면 ----------
   function rect(x, y, w, h, color) { ctx.fillStyle = color; ctx.fillRect(x, y, w, h); }
 
@@ -253,5 +256,5 @@ const UI = (function () {
     if (ready && Math.floor(t * 2) % 2 === 0) text('▼', b.x + b.w - 30, b.y + b.h - 28, 22, C.blue, 'right');
   }
 
-  return { begin, end, setMouse, click, move, release, text, wrap, rect, framed, panel, chip, scrim, hline, button, slider, title, sprite, coin, moneyPill, dialog, font, fitText, block, mirror };
+  return { begin, end, setMouse, click, move, release, text, wrap, rect, framed, panel, chip, scrim, hline, button, slider, title, sprite, coin, moneyPill, dialog, font, fitText, block, mirror, measure };
 })();
