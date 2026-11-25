@@ -64,6 +64,31 @@ const Sim = (function () {
     const S = Z.SHOW.special;
     return day <= S.first ? S.first : S.first + Math.ceil((day - S.first) / S.every) * S.every;
   }
+  // 동네 행사: 매주 평일(화~금) 하루. 네 주 동안 네 행사가 한 번씩 돌아오고 순서는 가게마다 다르다.
+  // 그 취향의 인형을 아직 구할 수 없는 랭크라면 그 주는 쉰다.
+  function eventOf(st, day) {
+    const week = Math.floor((day - 1) / 7) - Z.EVENT.firstWeek, n = DATA.EVENTS.length;
+    if (week < 0) return null;
+    if (dowOf(day) !== 1 + Math.floor(makeRng(st.seed * 131 + week * 977 + 11)() * 4)) return null;
+    const r = makeRng(st.seed * 53 + Math.floor(week / n) * 7919 + 29);
+    const order = DATA.EVENTS.map((_, i) => i);
+    for (let i = n - 1; i > 0; i--) { const j = Math.floor(r() * (i + 1)); const t = order[i]; order[i] = order[j]; order[j] = t; }
+    const e = DATA.EVENTS[order[week % n]];
+    return openTastes(st).indexOf(e.taste) >= 0 ? e : null;
+  }
+  // 방문객 중 외국인 비율: 공연일에 크게 늘어난다
+  function foreignShare(st, day) {
+    const F = Z.FOREIGN;
+    return (isSpecialDay(day) ? F.special : isShowDay(day) ? F.show : F.share) * (st.equip.globalpay ? F.globalpay : 1);
+  }
+  // 오늘 인플루언서가 오면 그 시각(틱), 아니면 -1(예고 없이 찾아오므로 화면에는 미리 알리지 않는다)
+  function influencerTick(st) {
+    const I = Z.INFLUENCER;
+    if (st.day < I.first) return -1;
+    const r = makeRng(st.seed * 6151 + st.day * 389 + 7);
+    r();
+    return r() < I.chance ? 30 + Math.floor(r() * (TICKS - 150)) : -1;
+  }
   const hasTrend = (st, d) => d.taste.indexOf(st.trend.taste) >= 0;
   // 지금 랭크에서 인형을 구할 수 있는 취향(손님과 유행은 이 안에서만 고른다)
   const openTastes = (st) => DATA.TASTES.filter((t) => DATA.DOLLS.some((d) => d.taste[0] === t && d.rank <= st.rank && !d.special && (!d.locked || (st.unlocked && st.unlocked[d.id]))));
@@ -471,7 +496,8 @@ const Sim = (function () {
   function repMult(st) { return Z.REP_MULT[0] + (Z.REP_MULT[1] - Z.REP_MULT[0]) * (st.reputation / 100); }
   function expectedVisitors(st, env) {
     const showMult = env.special ? Z.SHOW.special.dayMult : (env.show ? Z.SHOW.dayMult : 1);
-    return Z.BASE_VISITORS * Z.DOW[env.dow] * env.weatherMult * repMult(st) * shopLv(st).foot * (0.5 + 0.5 * machineVariety(st)) * eyeCatch(st) * showMult;
+    const eventMult = eventOf(st, st.day) ? Z.EVENT.dayMult : 1;
+    return Z.BASE_VISITORS * Z.DOW[env.dow] * env.weatherMult * repMult(st) * shopLv(st).foot * (0.5 + 0.5 * machineVariety(st)) * eyeCatch(st) * showMult * eventMult;
   }
   function forecast(st) { return Math.round(expectedVisitors(st, st.env || startOfDay(st))); }
   // 초대형 인형을 채운 기계가 있으면 지나가던 사람이 들어온다(기계당 +8%, 최대 +16%)
@@ -503,7 +529,7 @@ const Sim = (function () {
     const ev = (type, o) => { events.push(Object.assign({ t, type }, o)); };
 
     const R = {
-      day: st.day, weather: env.weather, show: env.show, special: env.special,
+      day: st.day, weather: env.weather, show: env.show, special: env.special, event: null, foreign: 0, influencer: null,
       visitors: 0, players: 0, plays: 0, wins: 0, claims: 0, dirty: 0,
       balk: { nothing: 0, budget: 0, queue: 0, empty: 0, exchange: 0 }, missed: {},
       revenue: 0, payout: 0, power: 0, repair: 0, rent: 0, upkeep: 0, wage: 0, satSum: 0,
@@ -524,7 +550,9 @@ const Sim = (function () {
 
     const showFrom = Z.SHOW.from, showTo = Z.SHOW.to;
     const showHour = env.special ? Z.SHOW.special.mult : (env.show ? Z.SHOW.mult : 1);
-    const hourMult = (h) => Z.HOUR_W[h - Z.OPEN] * (h >= showFrom && h < showTo ? showHour : 1);
+    const event = eventOf(st, st.day), vipAt = influencerTick(st);
+    R.event = event ? event.id : null;
+    const hourMult = (h) => Z.HOUR_W[h - Z.OPEN] * (h >= showFrom && h < showTo ? showHour : 1) * (event && h >= event.hours[0] && h < event.hours[1] ? Z.EVENT.mult : 1);
     const visitorsToday = expectedVisitors(st, env);
     let wsum = 0; for (let h = Z.OPEN; h < Z.CLOSE; h++) wsum += hourMult(h);
     R.expected = Math.round(visitorsToday);
@@ -580,15 +608,20 @@ const Sim = (function () {
       return litter;
     }
 
-    function pickCategory(h) {
+    function pickCategory(h, foreign) {
       const weekend = env.dow >= 5;
-      const list = custTypes.filter((c) => c.rank <= st.rank);
+      let list = custTypes.filter((c) => c.rank <= st.rank);
+      if (foreign) { // 외국인은 높은 확률로 K-pop 팬이다
+        const kpop = list.find((c) => c.id === 'kpop');
+        if (kpop && rng() < Z.FOREIGN.kpop) return kpop;
+        list = list.filter((c) => c.id !== 'kpop');
+      }
       const ws = list.map((c) => {
         const tm = c.time;
         let w = c.weight * (h >= tm.hours[0] && h < tm.hours[1] ? tm.mult : tm.off);
         if (weekend) w *= tm.weekend;
         if (env.show || env.special) w *= tm.show * (env.special && tm.show > 1 ? 1.4 : 1);
-        if (c.id === 'kpop' && st.equip.globalpay) w *= Z.GLOBALPAY_KPOP;
+        if (event && event.category === c.id) w *= Z.EVENT.category;
         return w;
       });
       return rng.pickW(list, ws);
@@ -597,7 +630,7 @@ const Sim = (function () {
     function pickTastes(cat) { // 손님 한 명의 가장 좋아하는 취향(배열로 담는다)
       const list = Object.keys(cat.tastes).filter((x) => open.indexOf(x) >= 0);
       if (!list.length) return [rng.pickW(open, open.map(() => 1))];
-      return [rng.pickW(list, list.map((x) => cat.tastes[x] * (x === st.trend.taste ? Z.TREND.demand : 1)))];
+      return [rng.pickW(list, list.map((x) => cat.tastes[x] * (x === st.trend.taste ? Z.TREND.demand : 1) * (event && x === event.taste ? Z.EVENT.demand : 1)))];
     }
 
     function pickAlso(cat, fav) { // 가장 좋아하는 것 말고 무작위로 즐기는 취향
@@ -633,7 +666,18 @@ const Sim = (function () {
 
     function join(c) { c.waitFrom = t; c.target.queue.push(c); }
 
+    // 인플루언서의 평: 놀고 간 경험 + 들어왔을 때의 가게 상태(좋아하는 인형, 청결, 고장·빈 기계). -1 ~ 1
+    function review(c) {
+      const v = c.seen, I = Z.INFLUENCER;
+      let score = c.plays ? 0.2 + (clamp(c.sat, 0, 1) - 0.5) * 0.8 + (c.wins ? 0.4 : 0) : -0.7;
+      score = clamp(score + (v.fav ? 0.3 : 0) - (v.dirty ? 0.5 : 0) - (v.trouble ? 0.4 : 0), -1, 1);
+      const points = score * Math.max(I.minGain, st.popularity * I.gain) * (score < 0 ? I.badMult : 1);
+      R.influencer = { score, points };
+      ev('review', { c: c.id, good: score >= 0, points });
+    }
+
     function leave(c, why) {
+      if (c.vip) review(c);
       if (c.plays === 0) { if (R.balk[why] != null) R.balk[why]++; ev('balk', { c: c.id, why }); return; }
       R.players++;
       if (why === 'frustrated') c.sat -= 0.1;
@@ -689,17 +733,27 @@ const Sim = (function () {
       join(c); // 계속: 다시 줄 끝에 선다(줄이 없으면 바로 이어서 한다)
     }
 
-    function arrive(h, force) { // force: 개발자 모드에서 환전 손님을 바로 만든다
-      const cat = pickCategory(h), C = Z.CUSTOMER;
+    function arrive(h, force, vip) { // force: 개발자 모드에서 환전 손님을 바로 만든다 / vip: 인플루언서
+      const foreign = !vip && rng() < foreignShare(st, st.day);
+      const cat = vip ? custTypes[0] : pickCategory(h, foreign), C = Z.CUSTOMER;
       const c = {
-        id: ++cid, cat, tastes: pickTastes(cat),
+        id: ++cid, cat, foreign, vip: !!vip, tastes: pickTastes(cat),
         budget: Math.max(500, Math.round(C.BUDGET_AVG * Math.exp(rng.normal() * C.BUDGET_SPREAD) / 100) * 100),
         patience: Math.round(rng.range(C.patience)), wait: rng.range(C.wait), skill: rng.range(C.skill),
         sat: 0.55, fails: 0, plays: 0, wins: 0, spent: 0, maxPlays: 999, waitFrom: t,
       };
       c.also = pickAlso(cat, c.tastes[0]);
       R.visitors++; R.byType[cat.id].visitors++;
-      ev('arrive', { c: c.id, cat: cat.id, tastes: c.tastes });
+      if (foreign) R.foreign++;
+      if (vip) {
+        c.budget = Math.round(c.budget * Z.INFLUENCER.budget / 100) * 100;
+        c.seen = {
+          dirty: !!findTask('clean', null),
+          trouble: mrt.some((r) => r.down || slotsUsed(r.m) === 0),
+          fav: mrt.some((r) => !r.down && loadedIds(r.m).some((id) => affinity(c, doll(id)) === 2)),
+        };
+      }
+      ev('arrive', { c: c.id, cat: cat.id, tastes: c.tastes, foreign, vip: c.vip });
       if (findTask('clean', null)) { c.sat -= Z.LITTER.sat; R.dirty++; }
       const tgt = chooseTarget(c) || (force && mrt.length ? { r: mrt[0], id: null } : null);
       if (!tgt) { leave(c, 'nothing'); return; }
@@ -707,7 +761,7 @@ const Sim = (function () {
       c.doll = tgt.id; c.target = tgt.r;
       // 환전이 필요한 손님은 처리해 줄 때까지 기다린다
       let ex = Z.EXCHANGE.chance * (exchangerOn(st) ? Z.EXCHANGE.exchangerKeep : 1);
-      if (st.equip.globalpay && cat.id === 'kpop') ex = 0;
+      if (st.equip.globalpay && foreign) ex = 0;
       if (force || rng() < ex) { waiting.push(c); ev('exchange', { c: c.id }); addTask('exchange', c.id); return; }
       join(c);
     }
@@ -718,6 +772,7 @@ const Sim = (function () {
       else if (kind === 'break') { const r = mrt.find((x) => !x.down); if (r) { r.down = true; r.brokeAt = t; addTask('repair', r.m.id); ev('breakdown', { m: r.m.id }); } }
       else if (kind === 'litter') { for (let i = 0; i < litterLimit; i++) { litter++; ev('litter', { c: -1 - i }); } addTask('clean', null); }
       else if (kind === 'exchange') arrive(Z.OPEN + Math.floor(Math.min(t, TICKS - 1) / 60), true);
+      else if (kind === 'influencer') arrive(Z.OPEN + Math.floor(Math.min(t, TICKS - 1) / 60), false, true);
       else if (kind === 'empty') { const r = mrt.find((x) => loadQty(x.m) > 0); if (r) { unloadAll(st, r.m); r.refillWait = 0; } }
       return delay !== Infinity;
     }
@@ -739,6 +794,7 @@ const Sim = (function () {
       tasks.slice().forEach((k) => { if (t - k.t >= delay) act(k.type, k.m); });
       const n = rng.poisson(visitorsToday * (hourMult(h) / wsum) / 60);
       for (let i = 0; i < n; i++) arrive(h);
+      if (t === vipAt) arrive(h, false, true);
       // 환전을 기다리다 나가는 손님
       waiting = waiting.filter((c) => {
         if ((findTask('exchange', c.id) || {}).claimed || t - c.waitFrom <= Z.EXCHANGE.wait) return true; // 사장님이 가고 있으면 기다린다
@@ -803,6 +859,7 @@ const Sim = (function () {
         dirty: -R.dirty * P.PENALTY * 0.3,
         claims: -R.claims * P.PENALTY * 3,
         decor: charm(st),
+        influencer: R.influencer ? R.influencer.points : 0,
         fade: -st.popularity * (1 - P.KEEP),
       };
       const before = st.popularity;
@@ -877,12 +934,15 @@ const Sim = (function () {
   function tasteDemand(st) {
     const out = {};
     DATA.TASTES.forEach((x) => { out[x] = 0; });
-    const open = openTastes(st), show = isArenaDay(st.day);
-    custTypes.filter((c) => c.rank <= st.rank).forEach((c) => {
-      const w = c.weight * (show ? c.time.show : 1);
+    const open = openTastes(st), show = isArenaDay(st.day), event = eventOf(st, st.day);
+    const types = custTypes.filter((c) => c.rank <= st.rank);
+    const weight = (c) => c.weight * (show ? c.time.show : 1) * (event && event.category === c.id ? Z.EVENT.category : 1);
+    const crowd = types.reduce((s, c) => s + weight(c), 0);
+    types.forEach((c) => {
+      const w = weight(c) + (c.id === 'kpop' ? crowd * foreignShare(st, st.day) * Z.FOREIGN.kpop : 0);
       const list = Object.keys(c.tastes).filter((x) => open.indexOf(x) >= 0);
       const favs = list.length ? list : open;
-      const share = (x) => (list.length ? c.tastes[x] : 1) * (x === st.trend.taste ? Z.TREND.demand : 1);
+      const share = (x) => (list.length ? c.tastes[x] : 1) * (x === st.trend.taste ? Z.TREND.demand : 1) * (event && x === event.taste ? Z.EVENT.demand : 1);
       const sum = favs.reduce((s, x) => s + share(x), 0);
       favs.forEach((x) => { out[x] += w * share(x) / sum; });
       const more = c.likesOthers ? 0.5 : (c.extraLikes || 0) * 0.2; // 즐기는(가장 좋아하지는 않는) 취향의 몫
@@ -899,7 +959,7 @@ const Sim = (function () {
   function autoPrep(st, o) {
     o = o || {};
     const reserve = o.reserve != null ? o.reserve : 250000;
-    const demand = tasteDemand(st);
+    const demand = tasteDemand(st), event = eventOf(st, st.day);
     const avail = DATA.DOLLS.filter((d) => orderable(st, d) || st.stock[d.id]);
     const picked = {};
     const covered = {}; // 가게 전체에서 취향이 몇 번 진열됐는지(골고루 갖추기)
@@ -942,7 +1002,7 @@ const Sim = (function () {
       const inMachines = st.machines.reduce((n, m) => n + (m.load[id] ? m.load[id].qty : 0), 0);
       const inStock = st.stock[id] ? st.stock[id].qty : 0;
       const inc = st.incoming.filter((x) => x.id === id).reduce((n, x) => n + x.qty, 0);
-      const rush = isArenaDay(st.day) && d.taste[0] === '아이돌' ? 2 : 1; // 공연일에는 아이돌 인형을 두 배 준비
+      const rush = (isArenaDay(st.day) && d.taste[0] === '아이돌') || (event && d.taste[0] === event.taste) ? 2 : 1; // 공연일·행사일에는 그 인형을 두 배 준비
       const want = (d.size === 'XL' ? need[id] * 5 : need[id] * 3) * rush - inMachines - inStock - inc;
       const q = Math.min(want, cap);
       if (q <= 0) return;
@@ -996,6 +1056,6 @@ const Sim = (function () {
     buyMachine, sellMachine, buyEquipment, expandWarehouse, expandShop, hireStaff, setOption, order, unitCost, orderable, nextSpecial,
     loadMachine, unloadAll, refill, addStock, sellStock,
     upgradeState, canOpen, canInstall, installMachine, storeMachine, sellBin, sellEquipment, buyDecor, sellDecor, canBuyDecor, decorDef, charm, charmRaw, charmCap, checkAchievements, statValue,
-    info: { capacityOf, exchangerOn, placed, placedBins, canRefill, slotsOf, slotsUsed, loadQty, freeSlots, footUsed, stockTotal, incomingTotal, canHold, grabProb, doll, TICKS, isShowDay, isSpecialDay },
+    info: { capacityOf, exchangerOn, placed, placedBins, canRefill, slotsOf, slotsUsed, loadQty, freeSlots, footUsed, stockTotal, incomingTotal, canHold, grabProb, doll, TICKS, isShowDay, isSpecialDay, eventOf, foreignShare },
   };
 })();

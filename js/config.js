@@ -79,7 +79,13 @@ const CFG = {
     REFILL_AT: 0.25,                           // 진열이 이 비율 이하가 되면 보충할 일이 생긴다
     LITTER: { chance: 0.07, task: 4, binMult: 2, robotKeep: 0.15, sat: 0.07 }, // 쓰레기를 남길 확률, 이만큼 쌓이면 청소할 일
     EXCHANGE: { chance: 0.04, wait: 25, exchangerKeep: 0.15 },                 // 환전 요청 확률, 기다리는 한계(분), 자동환전기 뒤 남는 비율
-    GLOBALPAY_KPOP: 1.25,                      // 해외결제를 두면 K-pop 팬 방문 배수
+    // 외국인: 방문객 중 비율(평일 / 주말 공연 / 특별 공연), K-pop 팬일 확률(4랭크부터), 해외결제를 두면 비율 배수
+    FOREIGN: { share: 0.02, show: 0.2, special: 0.35, kpop: 0.75, globalpay: 1.25 },
+    // 동네 행사: firstWeek주를 지난 뒤 매주 평일 하루. 방문 배수, 붐비는 시간 가중, 그 취향 손님 가중, 행사에 맞는 손님 분류 가중
+    EVENT: { firstWeek: 1, dayMult: 1.2, mult: 1.4, demand: 4, category: 2.5 },
+    // 인플루언서: first일차부터 하루 chance 확률로 예고 없이 방문. 인기도가 최대 max(minGain, 인기도×gain)만큼 오르고,
+    // 평이 나쁘면 그 badMult배만큼 내려간다. budget: 평소 손님 예산의 배수
+    INFLUENCER: { first: 8, chance: 0.06, gain: 0.06, minGain: 15, badMult: 0.6, budget: 2 },
     STAFF: { rank: 3, wage: 50000 },
     SKIP_NEAR_TOP: 0.95,                       // 1랭크에서 1위 점수의 이 비율을 넘으면 '전국 1위 도전일'(건너뛰기 불가)
     START_REP: 30,

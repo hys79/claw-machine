@@ -274,12 +274,20 @@ DATA.CUSTOMERS = [
     time: { hours: [13, 19], mult: 1.8, off: 0.6, weekend: 1.2, show: 3.0 } },
 ];
 
+// 동네 행사(전부 가상): 평일에 열리고, 그 취향을 가장 좋아하는 손님이 몰린다. hours: 붐비는 시간, category: 더 많이 오는 손님 분류
+DATA.EVENTS = [
+  { id: 'petfest', name: '반려동물 축제', short: '동물 축제', taste: '동물', hours: [11, 17] },
+  { id: 'foodmarket', name: '창동 먹거리 장터', short: '먹거리 장터', taste: '음식', hours: [11, 20] },
+  { id: 'comicfest', name: '만화 축제', short: '만화 축제', taste: '코믹', hours: [13, 19] },
+  { id: 'collector', name: '수집가 교환전', short: '교환전', taste: '희귀', hours: [17, 22], category: 'mania' },
+];
+
 // 설비(한 번 사면 영업 중 일이 덜 생긴다). rank: 해금 단계, perMachine: 기계 하나에 다는 개조
 DATA.EQUIPMENT = {
   smallbin: { name: '쓰레기통', rank: 1, price: 30000, desc: '놓을수록 청소할 일이 줄어든다.' },
   bin: { name: '대형 쓰레기통', rank: 1, price: 150000, desc: '기본 쓰레기통의 두 배를 담는다.' },
   exchanger: { name: '자동환전기', rank: 2, price: 600000, desc: '가게에 놓으면 환전 요청이 크게 준다.' },
-  globalpay: { name: '해외결제 시스템', rank: 3, price: 500000, desc: 'K-pop 팬의 환전 요청이 없어지고, K-pop 팬이 더 온다.' },
+  globalpay: { name: '해외결제 시스템', rank: 3, price: 500000, desc: '외국인 손님의 환전 요청이 없어지고, 외국인이 더 온다.' },
   robot: { name: '로봇 청소기', rank: 4, price: 1200000, desc: '청소할 일이 대부분 없어진다.' },
   capacity: { name: '대용량 진열 개조', rank: 4, price: 300000, perMachine: true, desc: '진열 칸이 1.5배(타이머 기계 제외).' },
   durable: { name: '내구성 개조', rank: 4, price: 250000, perMachine: true, desc: '고장이 크게 준다.' },

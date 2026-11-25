@@ -115,17 +115,17 @@ const Actors = (function () {
   // ---------- 손님 ----------
   const find = (id) => customers.find((a) => a.id === id);
   function spawn(e, force) {
-    if (customers.length >= MAX_CUSTOMERS && !force) return; // 대표 손님만 그린다(도움을 청하는 손님은 항상)
+    if (customers.length >= MAX_CUSTOMERS && !force && !e.vip) return; // 대표 손님만 그린다(도움을 청하는 손님은 항상)
     const P = Cutscene.art.NPC_PALS;
     const pal = e.cat === 'normal' ? P[e.c % P.length] : P[(e.cat === 'mania' ? 1 : 2) % P.length];
     const door = ShopView.doorPoint(g);
-    const a = { id: e.c, cat: e.cat, pal, x: door.x, y: door.y + 6, path: [], goal: null, state: 'browse', target: null, since: 0, dwell: 0, wantLeave: false, left: true, moving: false };
+    const a = { id: e.c, cat: e.cat, foreign: e.foreign, vip: e.vip, pal, x: door.x, y: door.y + 6, path: [], goal: null, state: 'browse', target: null, since: 0, dwell: 0, wantLeave: false, left: true, moving: false };
     setGoal(a, feet(randomCell(e.c))); // 들어와서 둘러본다
     customers.push(a);
   }
   function onEvent(e) {
-    if (e.type === 'arrive') { spawn(e); cats[e.c] = e.cat; return null; }
-    if (e.type === 'exchange' && !find(e.c)) spawn({ c: e.c, cat: cats[e.c] || 'normal' }, true);
+    if (e.type === 'arrive') { spawn(e); cats[e.c] = { c: e.c, cat: e.cat, foreign: e.foreign, vip: e.vip }; return null; }
+    if (e.type === 'exchange' && !find(e.c)) spawn(cats[e.c] || { c: e.c, cat: 'normal' }, true);
     const a = e.c != null ? find(e.c) : null;
     if (e.type === 'litter') {
       const base = a || feet(randomCell(++litterId * 5));
@@ -283,7 +283,17 @@ const Actors = (function () {
     const rows = st2.rows;
     const playing = a.state === 'play' && !a.moving && a.slot === 0;
     const top = person(ctx, playing ? Object.assign({}, st2.who, { x: a.x + Math.floor(now * 4 + a.id) % 2 }) : st2.who, a.pal, rows, now);
-    if (a.cat !== 'normal') UI.text(a.cat === 'kpop' ? '팬' : '마니아', a.x, top - 8, 14, a.cat === 'kpop' ? '#8a4fc0' : '#8a5a1a', 'center');
+    // 머리 위 표시: 분류 이름, 외국인은 지구본
+    const tag = a.vip ? '★인플루언서' : a.cat === 'kpop' ? '팬' : a.cat === 'mania' ? '마니아' : '';
+    const half = tag ? UI.measure(tag, 14) / 2 : 0;
+    if (tag) UI.text(tag, a.x + (a.foreign ? 7 : 0), top - 8, 14, a.vip ? '#d9455f' : a.cat === 'kpop' ? '#8a4fc0' : '#8a5a1a', 'center', a.vip ? '#ffffff' : null, a.vip ? 4 : 0);
+    if (a.foreign) globe(Math.round(a.x - (tag ? half + 7 : 0)) - 6, Math.round(top) - 14);
+  }
+  // 외국인 표시(12×12 도트 지구본)
+  const GLOBE = ['.kkkk.', 'kbbgbk', 'kggbbk', 'kbggbk', 'kbbgbk', '.kkkk.'];
+  function globe(x, y) {
+    const col = { k: CFG.COLOR.ink, b: '#6ab0f0', g: '#5eac5b' };
+    GLOBE.forEach((row, j) => { for (let i = 0; i < row.length; i++) if (col[row[i]]) UI.rect(x + i * 2, y + j * 2, 2, 2, col[row[i]]); });
   }
   function box(x, y) { UI.framed({ x: x - 11, y, w: 22, h: 16 }, '#c79a6a', 2); UI.rect(x - 3, y, 6, 16, '#e0b988'); }
   function drawHero(ctx, now) {
@@ -319,5 +329,5 @@ const Actors = (function () {
   }
   const position = (id) => find(id);
 
-  return { reset, onEvent, update, enqueue, jobState, litterAt, drawList, position, state: () => ({ hero, customers, litter, job, jobs }) };
+  return { globe, reset, onEvent, update, enqueue, jobState, litterAt, drawList, position, state: () => ({ hero, customers, litter, job, jobs }) };
 })();
