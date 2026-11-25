@@ -73,7 +73,7 @@ const Sim = (function () {
   const seasonOf = (day) => calOf(day).id;
   function holidayOf(day) {
     const c = calOf(day);
-    return DATA.HOLIDAYS.find((h) => h.season === c.id && c.day >= h.day && c.day < h.day + (h.days || 1)) || null;
+    return DATA.HOLIDAYS.find((h) => h.season === c.id && h.day === c.day) || null;
   }
 
   // 동네 행사: 매주 평일(화~금) 하루. 네 주 동안 네 행사가 한 번씩 돌아오고 순서는 가게마다 다르다.

@@ -405,21 +405,29 @@ const Cutscene = (function () {
     rect(g, x + 4, sy + 8, w - 8, 16, '#14324d'); rect(g, x + 5, sy + 9, w - 10, 14, '#d9eefb');
   }
 
-  function buildStreetBg() {
+  // o: {sky [위, 아래], cloud, cloudShade, overcast, leaf [테두리, 잎, 밝은 잎], bare, snow, walk, road, night}
+  function buildStreetBg(o) {
+    o = o || {};
+    const sky = o.sky || ['#6fbdf0', '#dcefff'], leaf = o.leaf || ['#2d7a47', '#3f9a55', '#6cc070'];
+    const lit = []; // 밤에 불 켜진 창
     const img = document.createElement('canvas');
     img.width = LW; img.height = GH;
     const g = img.getContext('2d');
     g.translate(EXT, 0);
-    for (let y = 0; y < 74; y++) rect(g, -EXT, y, LW, 1, lerpHex('#6fbdf0', '#dcefff', y / 74));
-    [[10, 10, 30], [90, 6, 24], [170, 14, 34], [-30, 20, 26], [230, 8, 30]].forEach((c) => {
-      rect(g, c[0] + 2, c[1] + 3, c[2] - 4, 3, '#ffffff'); rect(g, c[0], c[1] + 4, c[2], 2, '#ffffff'); rect(g, c[0] + 5, c[1] + 1, 9, 3, '#ffffff'); rect(g, c[0] + 2, c[1] + 6, c[2] - 4, 1, '#d6e6f4');
+    for (let y = 0; y < 74; y++) rect(g, -EXT, y, LW, 1, lerpHex(sky[0], sky[1], y / 74));
+    const cloud = o.cloud || '#ffffff', shade = o.cloudShade || '#d6e6f4';
+    const clouds = [[10, 10, 30], [90, 6, 24], [170, 14, 34], [-30, 20, 26], [230, 8, 30]];
+    if (o.overcast) clouds.push([48, 2, 40], [128, 12, 36], [-52, 4, 34], [268, 18, 30]);
+    clouds.forEach((c) => {
+      rect(g, c[0] + 2, c[1] + 3, c[2] - 4, 3, cloud); rect(g, c[0], c[1] + 4, c[2], 2, cloud); rect(g, c[0] + 5, c[1] + 1, 9, 3, cloud); rect(g, c[0] + 2, c[1] + 6, c[2] - 4, 1, shade);
     });
     // 멀리 보이는 아파트 숲
     const r = rngMaker(77);
     for (let x = -EXT; x < GW + EXT;) {
       const w = 9 + Math.floor(r() * 5), h = 14 + Math.floor(r() * 26);
       rect(g, x, 76 - h, w, h, ['#b9cde0', '#adc3d8', '#c6d6e6'][Math.floor(r() * 3)]);
-      for (let wy = 76 - h + 3; wy < 74; wy += 3) for (let wx = x + 1; wx < x + w - 2; wx += 3) rect(g, wx, wy, 1, 1, r() < 0.15 ? '#ffe2a0' : '#e8f1f8');
+      for (let wy = 76 - h + 3; wy < 74; wy += 3) for (let wx = x + 1; wx < x + w - 2; wx += 3) { const v = r(); rect(g, wx, wy, 1, 1, v < 0.15 ? '#ffe2a0' : '#e8f1f8'); if (v < 0.45) lit.push([wx, wy]); }
+      if (o.snow) rect(g, x, 76 - h, w, 2, '#ffffff');
       x += w + 1;
     }
     // 멀리 보이는 창동 아레나(오른쪽 위, 건물 뒤로 살짝)
@@ -434,18 +442,33 @@ const Cutscene = (function () {
     neighbor(g, -64, 118, 30, '#ecdfca', '#c9b79a', '#4aa38c');   // 왼쪽(베이지) - 가게 뒤까지 이어진다
     neighbor(g, 184, 118, 24, '#d9e7f4', '#aac0d6', '#e8776a');   // 오른쪽(연한 파랑)
     // 인도 + 연석 + 도로
-    for (let y = GROUND; y < 112; y++) rect(g, -EXT, y, LW, 1, y === GROUND ? '#b9c6d4' : '#e6ebf1');
+    for (let y = GROUND; y < 112; y++) rect(g, -EXT, y, LW, 1, y === GROUND ? '#b9c6d4' : o.snow ? '#ffffff' : o.walk || '#e6ebf1');
     for (let x = -EXT; x < GW + EXT; x += 20) rect(g, x, GROUND + 1, 1, 12, '#cfd8e2');
     rect(g, -EXT, 108, LW, 4, '#aab7c6'); rect(g, -EXT, 108, LW, 1, '#d5dde6');
-    for (let y = 112; y < GH; y++) rect(g, -EXT, y, LW, 1, '#7d8a99');
+    for (let y = 112; y < GH; y++) rect(g, -EXT, y, LW, 1, o.snow ? '#a9b6c4' : o.road || '#7d8a99');
     for (let x = -EXT; x < GW + EXT; x += 28) rect(g, x, 128, 14, 2, '#f1f4f7');
-    // 가로수
+    if (o.snow) { rect(g, -64, 30, 118, 2, '#ffffff'); rect(g, 184, 24, 118, 2, '#ffffff'); } // 지붕의 눈
+    if (o.night) { // 어둡게 덮은 뒤 불빛을 다시 켠다
+      rect(g, -EXT, 0, LW, GH, 'rgba(18,26,70,0.42)');
+      lit.forEach((p) => { if (p[0] > 54 && p[0] < 164) rect(g, p[0], p[1], 1, 1, '#ffd873'); });
+      [[-64, 118, 30], [184, 118, 24]].forEach((b) => {
+        for (let wy = b[2] + 8, i = 0; wy < GROUND - 28; wy += 14) for (let wx = b[0] + 5; wx < b[0] + b[1] - 8; wx += 14, i++) if (i % 3) rect(g, wx + 1, wy + 1, 6, 7, '#ffd873');
+        rect(g, b[0] + 5, GROUND - 19, b[1] - 10, 14, 'rgba(255,225,140,0.55)');
+      });
+    }
+    // 가로수(밤의 불빛보다 앞에 있으므로 마지막에 그린다)
+    const trunk = o.night ? '#463a4c' : '#7a5230';
     [[40, 108], [206, 108]].forEach((t) => {
-      rect(g, t[0] - 1, t[1] - 14, 3, 14, '#7a5230');
-      ellipseFill(g, t[0], t[1] - 22, 11, 11, '#2d7a47'); ellipseFill(g, t[0], t[1] - 22, 10, 10, '#3f9a55');
-      ellipseFill(g, t[0] - 3, t[1] - 25, 5, 5, '#6cc070');
+      rect(g, t[0] - 1, t[1] - 14, 3, 14, trunk);
+      if (o.bare) { // 겨울의 앙상한 가지
+        rect(g, t[0] - 1, t[1] - 30, 3, 16, trunk);
+        [[-9, -22, 8], [2, -26, 8], [-6, -30, 5], [2, -18, 7]].forEach((b) => { rect(g, t[0] + b[0], t[1] + b[1], b[2], 2, trunk); if (o.snow) rect(g, t[0] + b[0], t[1] + b[1] - 1, b[2], 1, '#ffffff'); });
+        return;
+      }
+      ellipseFill(g, t[0], t[1] - 22, 11, 11, leaf[0]); ellipseFill(g, t[0], t[1] - 22, 10, 10, leaf[1]);
+      ellipseFill(g, t[0] - 3, t[1] - 25, 5, 5, o.snow ? '#ffffff' : leaf[2]);
     });
-    streetImg = img;
+    return img;
   }
 
   // 작은 인형뽑기 기계(14x26): 쇼윈도 안
@@ -461,7 +484,8 @@ const Cutscene = (function () {
   }
 
   // 우리 가게(폭 120). 간판에는 플레이어가 지은 가게 이름이 들어간다.
-  function drawStreetShop(g, t, name) {
+  // o: 하루의 시작·끝 장면에서만 준다. {shutter 0(올림)~1(내림), night, snow}
+  function drawStreetShop(g, t, name, o) {
     const x0 = 60, w = 120, top = 26;
     rect(g, x0 - 3, top - 1, w + 6, GROUND - top + 1, '#14324d');
     rect(g, x0 - 2, top, w + 4, 5, '#2f80d0'); rect(g, x0 - 2, top, w + 4, 1, '#6ab0f0');
@@ -495,6 +519,15 @@ const Cutscene = (function () {
     // 바닥 띠와 화분
     rect(g, x0, GROUND - 4, w, 4, '#c9d3de');
     [x0 - 8, x0 + w + 3].forEach((px2) => { rect(g, px2, GROUND - 6, 6, 6, '#c97a4a'); ellipseFill(g, px2 + 3, GROUND - 10, 4, 4, '#3f9a55'); ellipseFill(g, px2 + 2, GROUND - 11, 2, 2, '#6cc070'); });
+    if (!o) return;
+    if (o.snow) { rect(g, x0 - 3, top - 3, w + 6, 3, '#ffffff'); [x0 - 8, x0 + w + 3].forEach((px2) => rect(g, px2, GROUND - 15, 6, 2, '#ffffff')); }
+    if (o.night) rect(g, x0 - 3, top - 1, w + 6, GROUND - top + 1, 'rgba(18,26,70,' + (0.18 + 0.3 * o.shutter) + ')');
+    const from = wy - 1, sh = Math.round((GROUND - 4 - from) * o.shutter); // 셔터
+    if (sh > 0) {
+      rect(g, x0 + 3, from, w - 6, sh, o.night ? '#6a7a92' : '#9fb0c0');
+      for (let y = 3; y < sh; y += 4) rect(g, x0 + 3, from + y, w - 6, 1, o.night ? '#4a5a72' : '#7a8ea2');
+      rect(g, x0 + 3, from + sh - 1, w - 6, 1, '#14324d');
+    }
   }
 
   // 거리의 행인들: 주인공과 같은 모양, 머리·옷 색만 다르다(자연스러운 같은 스케일)
@@ -517,7 +550,7 @@ const Cutscene = (function () {
       light: null, flash: 0, shake: 0, title: null, wait: 0, props: [], bg: 'arcade', t0: now };
     if (!arcadeImg) buildArcade();
     if (!phoneImg) buildPhoneBg();
-    if (!streetImg) buildStreetBg();
+    if (!streetImg) streetImg = buildStreetBg();
     nextScene(now);
   }
 
@@ -752,5 +785,6 @@ const Cutscene = (function () {
   }
 
   return { start, draw, advance, submit, skip, active: () => !!st,
-    art: { outlinedImg, drawFacing, ME_FRONT, ME_BACK, ME_WALK, ME_PAL, NPC_PALS } }; // 가게 화면(game.js)이 같은 인물 도트를 쓴다
+    art: { outlinedImg, drawFacing, ME_FRONT, ME_BACK, ME_WALK, ME_PAL, NPC_PALS, // 가게 화면(game.js)이 같은 인물 도트를 쓴다
+      street: { build: buildStreetBg, shop: drawStreetShop, LW, GH, EXT } } }; // 하루의 시작·끝 장면(exterior.js)
 })();

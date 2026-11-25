@@ -199,14 +199,14 @@ const Game = (function () {
   }
   // 하루의 시작·끝에 가게 바깥 모습을 잠깐 보여 준다(그동안 영업은 멈춘다)
   function showScene(kind, r) { scene = { kind, start: null, env: { day: r.day, weather: r.weather, show: r.show, special: r.special, event: r.event } }; }
-  function drawScene(ctx, now) {
+  function drawScene(ctx, now, W, H, OX) {
     if (scene.start == null) scene.start = now;
     if (now - scene.start >= Exterior.DUR) { scene = null; return; }
     const e = scene.env, event = eventById(e.event);
     Exterior.draw(ctx, now - scene.start, {
       kind: scene.kind, season: Sim.info.seasonOf(e.day), weather: e.weather, show: e.show, special: e.special,
-      id: event && event.id, eventName: event && event.name, dateText: fullDate(e.day), shopName: st.shopName || '내 가게', shopLevel: st.shopLevel,
-    });
+      id: event && event.id, eventName: event && event.name, dateText: fullDate(e.day), shopName: st.shopName || '내 가게',
+    }, W, H, OX);
     UI.button({ x: -600, y: 0, w: 2200, h: 576 }, '', { onClick: () => { scene = null; }, draw: () => {}, bare: true });
   }
   function skip() {
@@ -1004,7 +1004,7 @@ const Game = (function () {
     UI.rect(0, 0, W, H, '#cfe0ef');
     ctx.save();
     ctx.translate(OX, 0);
-    if (scene) drawScene(ctx, now);
+    if (scene) drawScene(ctx, now, W, H, OX);
     if (scene) { /* 바깥 모습을 보는 중 */ }
     else if (phase === 'open') drawOpen(ctx, now);
     else if (phase === 'result') drawResult();
