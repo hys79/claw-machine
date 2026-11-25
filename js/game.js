@@ -23,6 +23,7 @@ const Game = (function () {
   let tab = 'machine';    // 상점 탭
   let page = 0;
   let cart = {};
+  let cal = null;         // 공연 달력 창: 보고 있는 4주 묶음 번호(닫혀 있으면 null)
   let cartPlans = null;   // 추천 담기로 채운 장바구니라면 그때의 진열 계획(주문할 때 적용)
   let orderSize = 'all', orderFirst = null, stockSel = null, itemSel = null;
   let msg = null;         // {text, until}
@@ -59,16 +60,16 @@ const Game = (function () {
     st = Sim.upgradeState(d.sim);
     ShopView.autoPlace(st);
     toasts = []; toast = null;
-    placing = null; sellAsk = null; itemPage = 0; stockTab = 'doll'; orderSize = 'all'; stockSel = null; itemSel = null;
+    placing = null; sellAsk = null; cal = null; itemPage = 0; stockTab = 'doll'; orderSize = 'all'; stockSel = null; itemSel = null;
     phase = 'build'; popup = null; sel = null; drag = null; day = null; result = null; msg = null; last = null; cart = {};
     save();
   }
   // 화면을 나갈 때: 영업 중이었다면 그날 시작 전 상태로 되돌린다.
   function leave() {
     if (phase === 'open' && snapshot) State.data.sim = JSON.parse(snapshot);
-    day = null; phase = 'build'; popup = null; drag = null;
+    day = null; phase = 'build'; popup = null; drag = null; cal = null;
   }
-  function escape() { if (placing) { placing = null; return true; } if (popup) { popup = null; return true; } return false; }
+  function escape() { if (cal !== null) { cal = null; return true; } if (placing) { placing = null; return true; } if (popup) { popup = null; return true; } return false; }
 
   // ---------- 설치물 ----------
   const thingName = (t) => (t.kind === 'machine' ? mname(t.ref) : t.kind === 'bin' ? (t.ref.big ? '대형 쓰레기통' : '쓰레기통')
@@ -95,7 +96,7 @@ const Game = (function () {
   }
   // 90도 돌리기(기계, 바닥 소품). 놓으려는 중이면 그 물품을, 아니면 고른 것을 돌린다.
   function rotate() {
-    if (phase !== 'build' || popup) return;
+    if (phase !== 'build' || popup || cal !== null) return;
     const t = placing ? placingThing() : sel && findThing(sel);
     if (!t) return;
     if (!ShopView.canRotate(t)) { Sound.sfx('buzz'); say('이건 돌릴 수 없어요'); return; }
@@ -235,7 +236,7 @@ const Game = (function () {
   function update(now) {
     const dt = last == null ? 0 : Math.max(0, Math.min(0.1, now - last));
     last = now; clockNow = now;
-    if (phase !== 'open' || paused) return;
+    if (phase !== 'open' || paused || cal !== null) return; // 달력을 보는 동안은 멈춘다
     acc += dt * MIN_PER_SEC * speed;
     if (acc >= 1) {
       const n = Math.floor(acc); acc -= n; onEvents(day.step(n));
@@ -247,7 +248,7 @@ const Game = (function () {
 
   // ---------- 건축 화면의 끌어 놓기 ----------
   function press(p) {
-    if (dev && inDev(p)) return;
+    if (cal !== null || (dev && inDev(p))) return;
     if (phase === 'open') { // 바닥의 쓰레기를 누르면 주우러 간다
       const id = Actors.litterAt(p);
       if (id != null && Actors.enqueue({ type: 'litter', litter: id })) Sound.sfx('click');
@@ -301,9 +302,12 @@ const Game = (function () {
     UI.rect(-600, 56, 2200, 3, C.ink);
     const env = (phase === 'result' ? result : st.env) || {}; // 정산 중에는 방금 끝난 날의 날씨
     const dayNo = phase === 'result' ? result.day : st.day;
-    label(dayNo + '일차 (' + DOW[(dayNo - 1) % 7] + ')', 16, 18, C.ink, 'left', 18);
-    label((WEATHER[env.weather] || '') + (env.special ? ' · 특별 공연!' : env.show ? ' · 공연일' : ''), 16, 41, env.special || env.show ? C.alert : C.sub);
-    UI.moneyPill({ x: 160, y: 12, w: 180, h: 32 }, won(st.money));
+    // 날짜: 누르면 공연 달력
+    UI.button({ x: 8, y: 7, w: 172, h: 42 }, '', { onClick: openCalendar, draw: () => {}, bare: true });
+    calendarIcon(10, 13);
+    label(dayNo + '일차 (' + DOW[(dayNo - 1) % 7] + ')', 44, 18, C.ink, 'left', 18);
+    label((WEATHER[env.weather] || '') + (env.special ? ' · 특별 공연!' : env.show ? ' · 공연일' : ''), 44, 41, env.special || env.show ? C.alert : C.sub);
+    UI.moneyPill({ x: 190, y: 12, w: 162, h: 32 }, won(st.money));
     label(Sim.rankNo(st) + '랭크', 366, 18, C.blue, 'left', 18);
     const next = CFG.SIM.RANK_POP[st.rank];
     label(next ? '인기 ' + Math.round(st.popularity) + ' / ' + next : '인기 ' + Math.round(st.popularity) + ' · 전국 ' + Sim.leaderboard(st, 1).position + '위', 366, 41, C.sub);
@@ -318,6 +322,41 @@ const Game = (function () {
     if (today) return '♪ 오늘 ' + today + '! K-pop 팬이 몰려요. 아이돌 인형을 넉넉히 준비하세요';
     if (next) return '♪ 내일 ' + next + '! 아이돌 인형을 미리 발주해 두세요';
     return null;
+  }
+
+  // ---------- 공연 달력 ----------
+  const CAL_DAYS = 28; // 한 장에 4주
+  function calendarIcon(x, y) {
+    UI.framed({ x: x + 2, y: y + 2, w: 24, h: 26 }, C.white, 2);
+    UI.rect(x + 2, y + 2, 24, 8, C.alert);
+    [7, 19].forEach((dx) => UI.rect(x + dx, y - 1, 3, 7, C.ink));
+    for (let r = 0; r < 3; r++) for (let c = 0; c < 4; c++) UI.rect(x + 5 + c * 5, y + 13 + r * 5, 3, 3, r === 1 && c === 2 ? C.blue : C.edge);
+  }
+  const calDay = () => (phase === 'result' && result ? result.day : st.day);
+  function openCalendar() { cal = Math.floor((calDay() - 1) / CAL_DAYS); }
+  function drawCalendar() {
+    popupFrame('공연 달력', null, PANEL, () => { cal = null; });
+    const now = calDay(), first = cal * CAL_DAYS + 1, W = 100, H = 74, x0 = PANEL.x + 30, y0 = PANEL.y + 96;
+    DOW.forEach((d, i) => label(d, x0 + i * W + W / 2, PANEL.y + 76, i >= 5 ? C.alert : C.sub, 'center'));
+    for (let i = 0; i < CAL_DAYS; i++) {
+      const n = first + i, x = x0 + (i % 7) * W, y = y0 + Math.floor(i / 7) * H;
+      const special = Sim.info.isSpecialDay(n), show = Sim.info.isShowDay(n);
+      UI.framed({ x: x + 3, y: y + 3, w: W - 6, h: H - 6 }, special ? '#fff0b8' : show ? '#fde3ea' : n < now ? C.soft : C.white, 2, n === now ? C.blue : C.line);
+      if (n === now) [[3, 3, W - 6, 3], [3, H - 6, W - 6, 3], [3, 3, 3, H - 6], [W - 6, 3, 3, H - 6]].forEach((a) => UI.rect(x + a[0], y + a[1], a[2], a[3], C.blue));
+      label(n + '일', x + 10, y + 18, n < now ? C.sub : C.ink);
+      if (n === now) label('오늘', x + W - 10, y + 18, C.blue, 'right');
+      if (special) label('★ 특별 공연', x + W / 2, y + 48, n < now ? C.sub : '#8a5a1a', 'center');
+      else if (show) label('♪ 공연', x + W / 2, y + 48, n < now ? C.sub : C.alert, 'center');
+    }
+    const by = PANEL.y + PANEL.h - 46;
+    btn(PANEL.x + 30, by, 70, 34, '이전', () => { cal--; }, { disabled: cal <= 0 });
+    btn(PANEL.x + 108, by, 70, 34, '오늘', openCalendar);
+    btn(PANEL.x + 186, by, 70, 34, '다음', () => { cal++; });
+    let next = now;
+    while (!Sim.info.isSpecialDay(next)) next++;
+    const kpop = DATA.CUSTOMERS.find((c) => c.id === 'kpop');
+    label('다음 특별 공연: ' + next + '일차' + (next === now ? ' (오늘)' : ' (' + (next - now) + '일 뒤)'), PANEL.x + PANEL.w - 30, by + 8, C.ink, 'right');
+    label(st.rank < kpop.rank ? 'K-pop 팬은 ' + (6 - kpop.rank) + '랭크부터 찾아와요' : '공연일에는 K-pop 팬이 몰려요', PANEL.x + PANEL.w - 30, by + 28, C.sub, 'right');
   }
 
   // ---------- 건축 화면 ----------
@@ -443,14 +482,14 @@ const Game = (function () {
   // ---------- 팝업 ----------
   const PANEL = { x: 100, y: 70, w: 760, h: 470 };
   const BIG = { x: 30, y: 66, w: 900, h: 494 }; // 인형 발주·창고처럼 목록이 많은 창
-  function popupFrame(title, titleX, f) {
+  function popupFrame(title, titleX, f, onClose) {
     f = f || PANEL;
     UI.block({ x: -600, y: 0, w: 2200, h: 576 });
     UI.rect(-600, 59, 2200, 517, C.scrim);
     UI.panel(f, C.white);
     UI.text(title, titleX || 480, f.y + 30, 22, C.ink);
     UI.hline(f.x + 20, f.y + 54, f.w - 40);
-    btn(f.x + f.w - 96, f.y + 12, 80, 34, '닫기', () => { popup = null; });
+    btn(f.x + f.w - 96, f.y + 12, 80, 34, '닫기', onClose || (() => { popup = null; }));
   }
   function pager(count, per, f) {
     f = f || PANEL;
@@ -927,8 +966,8 @@ const Game = (function () {
       else if (popup === 'stock') drawStockPopup();
       else if (popup === 'plan') drawPlanPopup();
     }
-    drawTutorial(now);
-    drawDev();
+    if (cal !== null) drawCalendar();
+    else { drawTutorial(now); drawDev(); }
     if (msg && now < msg.until) {
       const low = popup === 'order' || popup === 'stock';
       const m = low ? { x: 290, y: 520, w: 380, h: 28 } : { x: 250, y: 66, w: 460, h: 32 };

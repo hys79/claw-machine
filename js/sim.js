@@ -433,7 +433,7 @@ const Sim = (function () {
 
   // ---------- 취향과 확률 ----------
   // 손님이 인형에 끌리는 정도: 2 가장 좋아함 / 1 즐김 / 0 관심 없음
-  const affinity = (c, d) => (d.taste.indexOf(c.tastes[0]) >= 0 ? 2 : c.cat.likesOthers ? 1 : 0);
+  const affinity = (c, d) => (d.taste.indexOf(c.tastes[0]) >= 0 ? 2 : c.cat.likesOthers || d.taste.some((t) => c.also.indexOf(t) >= 0) ? 1 : 0);
   function grabProb(m, d, skill) {
     const def = mdef(m);
     if (def.kind === 'timer') { // 정확한 시간에 버튼 누르기: 버튼 오차 ~ 정규분포(숙련될수록 작다), 허용 오차 안이면 성공
@@ -600,6 +600,12 @@ const Sim = (function () {
       return [rng.pickW(list, list.map((x) => cat.tastes[x] * (x === st.trend.taste ? Z.TREND.demand : 1)))];
     }
 
+    function pickAlso(cat, fav) { // 가장 좋아하는 것 말고 무작위로 즐기는 취향
+      const rest = open.filter((x) => x !== fav), out = [];
+      while (out.length < (cat.extraLikes || 0) && rest.length) out.push(rest.splice(rng.pickW(rest.map((_, i) => i), rest.map(() => 1)), 1)[0]);
+      return out;
+    }
+
     const dollAppeal = (c, d, m) => Z.MATCH.appeal[affinity(c, d)] * (hasTrend(st, d) ? Z.TREND.appeal : 1) * (mdef(m).sizeAppeal[d.size] || 1);
 
     function chooseTarget(c) {
@@ -691,6 +697,7 @@ const Sim = (function () {
         patience: Math.round(rng.range(C.patience)), wait: rng.range(C.wait), skill: rng.range(C.skill),
         sat: 0.55, fails: 0, plays: 0, wins: 0, spent: 0, maxPlays: 999, waitFrom: t,
       };
+      c.also = pickAlso(cat, c.tastes[0]);
       R.visitors++; R.byType[cat.id].visitors++;
       ev('arrive', { c: c.id, cat: cat.id, tastes: c.tastes });
       if (findTask('clean', null)) { c.sat -= Z.LITTER.sat; R.dirty++; }
@@ -878,7 +885,8 @@ const Sim = (function () {
       const share = (x) => (list.length ? c.tastes[x] : 1) * (x === st.trend.taste ? Z.TREND.demand : 1);
       const sum = favs.reduce((s, x) => s + share(x), 0);
       favs.forEach((x) => { out[x] += w * share(x) / sum; });
-      if (c.likesOthers) open.forEach((x) => { out[x] += w * 0.5 / open.length; });
+      const more = c.likesOthers ? 0.5 : (c.extraLikes || 0) * 0.2; // 즐기는(가장 좋아하지는 않는) 취향의 몫
+      open.forEach((x) => { out[x] += w * more / open.length; });
     });
     return out;
   }
