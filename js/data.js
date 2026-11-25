@@ -282,17 +282,20 @@ DATA.EVENTS = [
   { id: 'collector', name: '수집가 교환전', short: '교환전', taste: '희귀', hours: [17, 22], category: 'mania' },
 ];
 
-// 날짜 행사: 매년 그 날짜에 열린다. date [월, 일] 또는 음력 명절의 해별 양력 date(dates), before/after: 앞뒤로 이어지는 날 수,
-// dayMult: 방문 배수, taste: 몰리는 취향. 2029·2030년의 설날·추석 날짜는 확인하지 않은 값이다.
+// 계절: 여름에 시작해 차례로 돌아온다. 한 해는 네 계절.
+DATA.SEASONS = [{ id: 'summer', name: '여름' }, { id: 'autumn', name: '가을' }, { id: 'winter', name: '겨울' }, { id: 'spring', name: '봄' }];
+
+// 날짜 행사: 해마다 그 계절의 day일부터 days일 동안(기본 하루). dayMult: 방문 배수, taste: 몰리는 취향
 DATA.HOLIDAYS = [
-  { id: 'newyear', name: '새해 첫날', short: '새해', date: [1, 1], taste: '코믹', dayMult: 1.3 },
-  { id: 'seollal', name: '설날 연휴', short: '설날 연휴', dates: { 2028: [1, 27], 2029: [2, 13], 2030: [2, 3] }, before: 1, after: 1, taste: '음식', dayMult: 1.25 },
-  { id: 'valentine', name: '발렌타인데이', short: '발렌타인', date: [2, 14], taste: '음식', dayMult: 1.3 },
-  { id: 'whiteday', name: '화이트데이', short: '화이트데이', date: [3, 14], taste: '동물', dayMult: 1.25 },
-  { id: 'childrens', name: '어린이날', short: '어린이날', date: [5, 5], taste: '동물', dayMult: 1.5 },
-  { id: 'chuseok', name: '추석 연휴', short: '추석 연휴', dates: { 2027: [9, 15], 2028: [10, 3], 2029: [9, 22], 2030: [9, 12] }, before: 1, after: 1, taste: '음식', dayMult: 1.3 },
-  { id: 'halloween', name: '핼러윈', short: '핼러윈', date: [10, 31], taste: '코믹', dayMult: 1.4 },
-  { id: 'christmas', name: '크리스마스', short: '크리스마스', date: [12, 25], before: 1, taste: '동물', dayMult: 1.5 },
+  { id: 'nightmarket', name: '여름 야시장', short: '여름 야시장', season: 'summer', day: 8, taste: '음식', dayMult: 1.3 },
+  { id: 'watergun', name: '물총 축제', short: '물총 축제', season: 'summer', day: 19, taste: '코믹', dayMult: 1.35 },
+  { id: 'chuseok', name: '추석 연휴', short: '추석 연휴', season: 'autumn', day: 9, days: 3, taste: '음식', dayMult: 1.3 },
+  { id: 'halloween', name: '핼러윈', short: '핼러윈', season: 'autumn', day: 26, taste: '코믹', dayMult: 1.4 },
+  { id: 'christmas', name: '크리스마스', short: '크리스마스', season: 'winter', day: 11, days: 2, taste: '동물', dayMult: 1.5 },
+  { id: 'newyear', name: '새해 첫날', short: '새해', season: 'winter', day: 17, taste: '코믹', dayMult: 1.3 },
+  { id: 'seollal', name: '설날 연휴', short: '설날 연휴', season: 'winter', day: 22, days: 3, taste: '음식', dayMult: 1.25 },
+  { id: 'whiteday', name: '화이트데이', short: '화이트데이', season: 'spring', day: 5, taste: '동물', dayMult: 1.25 },
+  { id: 'childrens', name: '어린이날', short: '어린이날', season: 'spring', day: 19, taste: '동물', dayMult: 1.5 },
 ];
 
 // 설비(한 번 사면 영업 중 일이 덜 생긴다). rank: 해금 단계, perMachine: 기계 하나에 다는 개조

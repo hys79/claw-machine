@@ -65,19 +65,15 @@ const Sim = (function () {
     return day <= S.first ? S.first : S.first + Math.ceil((day - S.first) / S.every) * S.every;
   }
   // ---------- 날짜 ----------
-  const DAY_MS = 86400000;
-  const startMs = () => Date.UTC(Z.START_DATE[0], Z.START_DATE[1] - 1, Z.START_DATE[2]);
-  function dateOf(day) { const d = new Date(startMs() + (day - 1) * DAY_MS); return { y: d.getUTCFullYear(), m: d.getUTCMonth() + 1, d: d.getUTCDate() }; }
-  const dayOf = (y, m, d) => Math.round((Date.UTC(y, m - 1, d) - startMs()) / DAY_MS) + 1;
-  const seasonOf = (day) => ['winter', 'winter', 'spring', 'spring', 'spring', 'summer', 'summer', 'summer', 'autumn', 'autumn', 'autumn', 'winter'][dateOf(day).m - 1];
+  // 몇 년차(year), 어느 계절(season 번호·id), 그 계절의 며칠(day)인지
+  function calOf(day) {
+    const n = Z.SEASON_DAYS, total = Math.floor((day - 1) / n), season = total % 4;
+    return { year: Math.floor(total / 4) + 1, season, id: DATA.SEASONS[season].id, day: day - total * n };
+  }
+  const seasonOf = (day) => calOf(day).id;
   function holidayOf(day) {
-    const y = dateOf(day).y;
-    return DATA.HOLIDAYS.find((h) => [y - 1, y, y + 1].some((yy) => {
-      const base = h.dates ? h.dates[yy] : h.date;
-      if (!base) return false;
-      const k = day - dayOf(yy, base[0], base[1]);
-      return k >= -(h.before || 0) && k <= (h.after || 0);
-    })) || null;
+    const c = calOf(day);
+    return DATA.HOLIDAYS.find((h) => h.season === c.id && c.day >= h.day && c.day < h.day + (h.days || 1)) || null;
   }
 
   // 동네 행사: 매주 평일(화~금) 하루. 네 주 동안 네 행사가 한 번씩 돌아오고 순서는 가게마다 다르다.
@@ -505,7 +501,7 @@ const Sim = (function () {
       const taste = st.trend.next || pickT(null);
       st.trend = { taste, next: pickT(taste), until: st.day + Z.TREND.days };
     }
-    const odds = Z.WEATHER_MONTH[dateOf(st.day).m - 1];
+    const odds = Z.WEATHER_SEASON[calOf(st.day).season];
     const w = rng.pickW(['sunny', 'cloudy', 'rain', 'snow', 'heat'], odds);
     st.weather = w;
     st.env = { weather: w, weatherMult: Z.WEATHER_MULT[w], show: isShowDay(st.day), special: isSpecialDay(st.day), dow: dowOf(st.day) };
@@ -1076,6 +1072,6 @@ const Sim = (function () {
     buyMachine, sellMachine, buyEquipment, expandWarehouse, expandShop, hireStaff, setOption, order, unitCost, orderable, nextSpecial,
     loadMachine, unloadAll, refill, addStock, sellStock,
     upgradeState, canOpen, canInstall, installMachine, storeMachine, sellBin, sellEquipment, buyDecor, sellDecor, canBuyDecor, decorDef, charm, charmRaw, charmCap, checkAchievements, statValue,
-    info: { capacityOf, exchangerOn, placed, placedBins, canRefill, slotsOf, slotsUsed, loadQty, freeSlots, footUsed, stockTotal, incomingTotal, canHold, grabProb, doll, TICKS, isShowDay, isSpecialDay, eventOf, holidayOf, foreignShare, dateOf, dayOf, seasonOf },
+    info: { capacityOf, exchangerOn, placed, placedBins, canRefill, slotsOf, slotsUsed, loadQty, freeSlots, footUsed, stockTotal, incomingTotal, canHold, grabProb, doll, TICKS, isShowDay, isSpecialDay, eventOf, holidayOf, foreignShare, calOf, seasonOf },
   };
 })();

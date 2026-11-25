@@ -131,10 +131,12 @@ const Exterior = (function () {
     } else if (id === 'halloween') {
       bulbs(['#ff8a2a', '#8a4fc0']);
       [x - 40, x + w + 34, x + w + 86].forEach((px, i) => { disc(px, GROUND - 12, 22 - i * 3, '#ff8a2a'); R(px - 3, GROUND - 38 + i * 4, 6, 8, '#3f6b2a'); R(px - 10, GROUND - 18, 6, 6, '#3a2200'); R(px + 4, GROUND - 18, 6, 6, '#3a2200'); R(px - 8, GROUND - 6, 16, 4, '#3a2200'); });
-    } else if (id === 'chuseok' || id === 'seollal' || id === 'newyear') {
+    } else if (id === 'chuseok' || id === 'seollal' || id === 'newyear' || id === 'nightmarket') {
       for (let i = 0; i < 6; i++) { const lx = x + 20 + i * (w - 52) / 5; R(lx + 5, y + 80, 3, 12, CFG.COLOR.ink); R(lx - 3, y + 92, 20, 24, i % 2 ? '#3f6fd8' : '#e0453f'); R(lx - 1, y + 98, 16, 4, '#ffd84a'); }
-    } else { // 풍선(어린이날, 발렌타인, 화이트데이, 동네 행사)
-      const cols = id === 'valentine' ? ['#e0456a', '#ff9fc2'] : id === 'whiteday' ? ['#ffffff', '#bfe0ff'] : ['#ff5a5a', '#ffd84a', '#5ab0f0', '#7ccf6a'];
+    } else if (id === 'watergun') { // 물줄기
+      [x - 90, x + w + 90].forEach((px, side) => { for (let i = 0; i < 14; i++) { const k = (now * 1.4 + i / 14) % 1, d = side ? -1 : 1; R(px + d * k * 130, GROUND - 40 - Math.sin(k * Math.PI) * 110, 7, 7, i % 2 ? '#5ab0f0' : '#bfe8ff'); } R(px - 8, GROUND - 40, 16, 40, side ? '#ff8a2a' : '#7ccf6a'); });
+    } else { // 풍선(어린이날, 화이트데이, 동네 행사)
+      const cols = id === 'whiteday' ? ['#ffffff', '#bfe0ff'] : ['#ff5a5a', '#ffd84a', '#5ab0f0', '#7ccf6a'];
       [x - 70, x - 40, x + w + 40, x + w + 74].forEach((bx, i) => {
         const by = GROUND - 150 + (i % 2) * 30 + Math.sin(now * 2 + i) * 6;
         R(bx, by + 16, 2, GROUND - by - 16, '#5f7a92'); disc(bx, by, 18, cols[i % cols.length]);
