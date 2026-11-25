@@ -9,5 +9,5 @@ if (process.argv.includes('--effective') && fs.existsSync(path.join(root, 'balan
 files.forEach((f) => vm.runInContext(fs.readFileSync(path.join(root, f), 'utf8'), ctx, { filename: f }));
 process.stdout.write(vm.runInContext(`JSON.stringify({
   CFG: { START_MONEY: CFG.START_MONEY, SIM: CFG.SIM },
-  DATA: { DOLLS: DATA.DOLLS, MACHINES: DATA.MACHINES, CUSTOMERS: DATA.CUSTOMERS, EQUIPMENT: DATA.EQUIPMENT, TASTES: DATA.TASTES },
+  DATA: { DOLLS: DATA.DOLLS, MACHINES: DATA.MACHINES, CUSTOMERS: DATA.CUSTOMERS, EQUIPMENT: DATA.EQUIPMENT, TASTES: DATA.TASTES, DECOR: DATA.DECOR, ACHIEVEMENTS: DATA.ACHIEVEMENTS },
 })`, ctx));

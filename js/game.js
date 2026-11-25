@@ -12,8 +12,11 @@ const Game = (function () {
   let st = null;          // 시뮬레이션 상태(State.data.sim)
   let phase = 'build';    // build | open | result
   let popup = null;       // null | shop | order | plan
-  let sel = null;         // 선택한 기계 번호
-  let drag = null;        // 끌고 있는 기계: {m, dx, dy, from, x, y, moved}
+  let sel = null;         // 선택한 것의 key(ShopView.things)
+  let drag = null;        // 끌고 있는 것: {t, dx, dy, x, y, sx, sy, moved}
+  let boxes = [];         // 창고에서 기계로 날아가는 상자
+  let toasts = [], toast = null; // 도전과제 알림
+  let dayAch = [];
   let scope = 'one';      // 난이도·가격 적용 범위
   let tab = 'machine';    // 상점 탭
   let page = 0;
@@ -30,8 +33,21 @@ const Game = (function () {
   const save = () => State.save();
   // 구매 결과를 알려 주고 저장한다
   function done(r, okText) {
-    if (r.ok) { Sound.sfx('confirm'); if (okText) say(okText); ShopView.autoPlace(st); save(); } else { Sound.sfx('buzz'); say(r.why); }
+    if (r.ok) { Sound.sfx('confirm'); if (okText) say(okText); ShopView.autoPlace(st); achieve(Sim.checkAchievements(st)); save(); } else { Sound.sfx('buzz'); say(r.why); }
   }
+  // 도전과제 보상 설명
+  function rewardText(r) {
+    if (r.money) return '상금 ' + man(r.money) + '원';
+    if (r.doll) return '인형 해금: ' + Sim.info.doll(r.doll).name;
+    return '소품: ' + Sim.decorDef(r.decor).name;
+  }
+  function achieve(list) {
+    if (!list.length) return;
+    list.forEach((a) => toasts.push(a));
+    ShopView.autoPlace(st); // 보상 소품을 빈 곳에 놓는다
+  }
+  const findThing = (key) => ShopView.things(st).find((t) => t.key === key);
+  const selectedMachine = () => { const t = sel && findThing(sel); return t && t.kind === 'machine' ? t.ref : null; };
 
   function enter() {
     const d = State.data;
@@ -39,8 +55,9 @@ const Game = (function () {
       d.sim = Sim.newGame(d.playerName, d.shopName);
       Sim.autoPrep(d.sim, { order: false }); // 가진 인형만으로 첫 진열(발주 없음)
     }
-    st = d.sim;
+    st = Sim.upgradeState(d.sim);
     ShopView.autoPlace(st);
+    boxes = []; toasts = []; toast = null;
     phase = 'build'; popup = null; sel = null; drag = null; day = null; result = null; msg = null; last = null; cart = {};
     save();
   }
@@ -57,12 +74,15 @@ const Game = (function () {
     save();
     snapshot = JSON.stringify(st);
     day = Sim.openDay(st, { mode: 'manual' });
+    boxes = []; dayAch = [];
     phase = 'open'; popup = null; sel = null; speed = 1; paused = false; acc = 0; last = null;
     actors = []; pops = []; today = { revenue: 0, visitors: 0, wins: 0 };
     Sound.sfx('doorbell');
   }
   function finishDay() {
     result = day.close();
+    achieve(result.achieved);
+    result.achieved = dayAch.concat(result.achieved);
     day = null; phase = 'result'; snapshot = null;
     Sound.sfx(result.rankUp ? 'fanfare' : 'prize');
     save();
@@ -70,7 +90,7 @@ const Game = (function () {
   function skip() {
     const r = Sim.skipDay(st);
     if (!r.ok) { say(r.why); Sound.sfx('buzz'); return; }
-    result = r.result; phase = 'result'; popup = null; save();
+    result = r.result; phase = 'result'; popup = null; achieve(result.achieved); save();
   }
   function pop(x, y, text, color) { if (pops.length < 24) pops.push({ x, y, text, color, t: clockNow }); }
 
@@ -98,6 +118,10 @@ const Game = (function () {
         if (!a) return;
         a.wantLeave = true; // 바로 사라지지 않고, 자리에 가서 잠깐 머문 뒤 나간다
         if (e.type === 'balk') pop(a.x, a.y - 40, BALK[e.why] || '…', C.alert);
+      } else if (e.type === 'refill') { // 창고 문에서 상자가 날아온다
+        const m = mach(e.m);
+        if (m) { const r = ShopView.rectOf(g, { kind: 'machine', w: ShopView.things(st).find((t) => t.ref === m).w }, m.pos); boxes.push({ x0: g.store.x + g.store.w / 2, y0: g.store.y + 36, x1: r.x + r.w / 2, y1: r.y + r.h / 2, t: clockNow }); }
+        if (e.subs && e.subs.length) say(Sim.info.doll(e.subs[0]).name + '(으)로 대신 채웠어요');
       } else if (e.type === 'task') {
         if (speed > 1) { speed = 1; say('할 일이 생겨 1배속으로 바꿨어요'); }
         Sound.sfx('notif');
@@ -115,7 +139,10 @@ const Game = (function () {
     last = now; clockNow = now;
     if (phase !== 'open' || paused) return;
     acc += dt * MIN_PER_SEC * speed;
-    if (acc >= 1) { const n = Math.floor(acc); acc -= n; onEvents(day.step(n)); }
+    if (acc >= 1) {
+      const n = Math.floor(acc); acc -= n; onEvents(day.step(n));
+      const got = Sim.checkAchievements(st, day.result); dayAch = dayAch.concat(got); achieve(got);
+    }
     const v = 110 * speed * dt;
     const door = ShopView.doorPoint(ShopView.geom(st.shopLevel));
     actors.forEach((a) => {
@@ -134,14 +161,15 @@ const Game = (function () {
   function press(p) {
     if (phase !== 'build' || popup) return;
     const g = ShopView.geom(st.shopLevel);
-    const hit = st.machines.slice().sort((a, b) => b.pos.y - a.pos.y).find((m) => {
-      const r = ShopView.machineRect(g, m);
+    if (p.x >= g.store.x && p.x <= g.store.x + g.store.w && p.y >= g.store.y && p.y <= g.store.y + g.store.h) { popup = 'stock'; page = 0; Sound.sfx('click'); return; }
+    const hit = ShopView.things(st).filter((t) => t.holder.pos).sort((a, b) => ShopView.depth(g, b) - ShopView.depth(g, a)).find((t) => {
+      const r = ShopView.rectOf(g, t);
       return p.x >= r.x && p.x <= r.x + r.w && p.y >= r.y && p.y <= r.y + r.h;
     });
     if (!hit) { if (p.x < 720 && p.y > 60 && p.y < 500) sel = null; return; }
-    const r = ShopView.machineRect(g, hit);
-    sel = hit.id;
-    drag = { m: hit, dx: p.x - r.x, dy: p.y - r.y, x: p.x, y: p.y, sx: p.x, sy: p.y, moved: false };
+    const r = ShopView.rectOf(g, hit);
+    sel = hit.key;
+    drag = { t: hit, dx: p.x - r.x, dy: p.y - r.y, x: p.x, y: p.y, sx: p.x, sy: p.y, moved: false };
     Sound.sfx('click');
   }
   function move(p) {
@@ -150,14 +178,15 @@ const Game = (function () {
     if (Math.hypot(p.x - drag.sx, p.y - drag.sy) > 6) drag.moved = true;
   }
   function dragCell() {
-    const g = ShopView.geom(st.shopLevel);
-    return { x: Math.round((drag.x - drag.dx - 3 - g.x) / ShopView.CW), y: Math.round((drag.y - drag.dy + 26 - g.y) / ShopView.CH) };
+    const g = ShopView.geom(st.shopLevel), t = drag.t;
+    const base = ShopView.rectOf(g, t, { x: 0, y: t.wall ? -1 : 0 });
+    return { x: Math.round((drag.x - drag.dx - base.x) / ShopView.CW), y: t.wall ? -1 : Math.round((drag.y - drag.dy - base.y) / ShopView.CH) };
   }
   function release() {
     if (!drag) return;
     if (drag.moved) {
       const c = dragCell();
-      if (ShopView.canPlace(st, drag.m, c.x, c.y)) { drag.m.pos = c; Sound.sfx('confirm'); save(); }
+      if (ShopView.canPlace(st, drag.t, c.x, c.y)) { drag.t.holder.pos = c; Sound.sfx('confirm'); save(); }
       else { Sound.sfx('buzz'); say('여기에는 놓을 수 없어요'); }
     }
     drag = null;
@@ -198,14 +227,13 @@ const Game = (function () {
   function drawBuild(ctx) {
     ShopView.room(st, { grid: true });
     const g = ShopView.geom(st.shopLevel);
-    st.machines.slice().sort((a, b) => a.pos.y - b.pos.y).forEach((m) => {
-      if (drag && drag.moved && drag.m === m) return;
-      ShopView.machine(m, ShopView.machineRect(g, m), { selected: sel === m.id });
+    ShopView.things(st).filter((t) => t.holder.pos).sort((a, b) => ShopView.depth(g, a) - ShopView.depth(g, b)).forEach((t) => {
+      if (drag && drag.moved && drag.t.key === t.key) return;
+      ShopView.thing(st, t, ShopView.rectOf(g, t), { selected: sel === t.key });
     });
     if (drag && drag.moved) {
-      const c = dragCell(), ok = ShopView.canPlace(st, drag.m, c.x, c.y);
-      const r = ShopView.machineRect(g, { type: drag.m.type, pos: c });
-      ShopView.machine(drag.m, r, { ghost: ok ? 'ok' : 'no' });
+      const c = dragCell(), ok = ShopView.canPlace(st, drag.t, c.x, c.y);
+      ShopView.thing(st, drag.t, ShopView.rectOf(g, drag.t, c), { ghost: ok ? 'ok' : 'no' });
     }
     topBar();
     label('기계 칸 ' + Sim.info.footUsed(st) + ' / ' + CFG.SIM.SHOP[st.shopLevel].slots, 560, 18);
@@ -213,21 +241,55 @@ const Game = (function () {
     label('유행 ' + st.trend.taste + ' → 다음 ' + st.trend.next, 700, 18, '#8a4fc0');
     label('예상 손님 ' + Sim.forecast(st) + '명', 700, 41, C.sub);
     sidePanel();
-    btn(20, 514, 130, 46, '상점', () => { popup = 'shop'; page = 0; }, { size: 18 });
-    btn(164, 514, 130, 46, '인형 발주', () => { popup = 'order'; page = 0; cart = {}; }, { size: 18 });
-    btn(308, 514, 130, 46, '추천 진열', () => { Sim.autoPrep(st, { order: false }); say('가진 인형으로 다시 진열했어요'); save(); }, { size: 18 });
-    const can = Sim.canSkip(st);
-    if (st.staff) btn(452, 514, 130, 46, '건너뛰기', skip, { size: 18, style: can.ok ? 'secondary' : 'soft' });
-    btn(742, 514, 198, 46, '영업 시작', openShop, { style: 'primary', size: 22 });
+    const bar = (x, w, text, onClick, o) => btn(x, 514, w, 46, text, onClick, Object.assign({ size: 18 }, o));
+    bar(20, 106, '상점', () => { popup = 'shop'; page = 0; });
+    bar(138, 106, '발주', () => { popup = 'order'; page = 0; cart = {}; });
+    bar(256, 106, shortage().length ? '창고 !' : '창고', () => { popup = 'stock'; page = 0; }, shortage().length ? { style: 'danger' } : {});
+    bar(374, 120, '추천 진열', () => { Sim.autoPrep(st, { order: false }); say('가진 인형으로 다시 진열했어요'); achieve(Sim.checkAchievements(st)); save(); });
+    if (st.staff) bar(506, 120, '건너뛰기', skip, { style: Sim.canSkip(st).ok ? 'secondary' : 'soft' });
+    bar(742, 198, '영업 시작', openShop, { style: 'primary', size: 22 });
   }
+  const loadedTotal = (id) => st.machines.reduce((n, m) => n + (m.load[id] ? m.load[id].qty : 0), 0);
+  const stockQty = (id) => (st.stock[id] ? st.stock[id].qty : 0);
+  const comingQty = (id) => st.incoming.filter((x) => x.id === id).reduce((n, x) => n + x.qty, 0);
+  // 지난 영업만큼 뽑히면 모자랄 인형
+  const shortage = () => Object.keys(st.used).filter((id) => stockQty(id) + loadedTotal(id) + comingQty(id) < st.used[id]);
 
   function sidePanel() {
     const p = { x: 732, y: 74, w: 210, h: 424 };
     UI.panel(p, C.white, 3);
-    const m = st.machines.find((x) => x.id === sel);
+    const t = sel && findThing(sel);
+    const m = t && t.kind === 'machine' ? t.ref : null;
+    const mid = p.x + p.w / 2;
+    if (t && t.kind === 'fix') {
+      const key = t.ref, up = key === 'exchange' ? 'exchanger' : key === 'trash' ? 'bin' : null;
+      const have = up ? !!st.equip[up] : true;
+      label(up && have ? DATA.EQUIPMENT[up].name : ShopView.FIX_NAME[key], mid, p.y + 30, C.ink, 'center', 18);
+      const desc = key === 'exchange' ? ['손님이 환전하는 곳'] : key === 'trash' ? ['손님 쓰레기를 모아요'] : ['청소를 대신 해 줘요'];
+      desc.concat(['', '끌어서 옮길 수 있어요']).forEach((s, i) => label(s, mid, p.y + 70 + i * 24, C.sub, 'center'));
+      if (up && !have) {
+        const e = DATA.EQUIPMENT[up], locked = e.rank > st.rank;
+        label(e.name, mid, p.y + 190, C.ink, 'center');
+        UI.wrap(e.desc, p.w - 24, 14).forEach((s, i) => label(s, mid, p.y + 216 + i * 22, C.sub, 'center'));
+        btn(p.x + 12, p.y + 280, p.w - 24, 40, locked ? (6 - e.rank) + '랭크부터' : '바꾸기 ' + man(e.price), () => done(Sim.buyEquipment(st, up), e.name + ' 설치!'), { style: 'primary', disabled: locked });
+      }
+      return;
+    }
+    if (t && t.kind === 'decor') {
+      const d = t.def;
+      UI.wrap(d.name, p.w - 20, 18).forEach((s, i) => label(s, mid, p.y + 30 + i * 24, C.ink, 'center', 18));
+      label((d.wall ? '벽 소품' : '바닥 소품') + ' · 매력 ' + d.charm, mid, p.y + 90, C.sub, 'center');
+      label('가게 매력 ' + Sim.charmRaw(st).toFixed(1) + ' / ' + Sim.charmCap(st), mid, p.y + 118, C.blue, 'center');
+      label(d.locked ? '도전과제 기념품' : '같은 소품은 효과가 줄어요', mid, p.y + 146, C.sub, 'center');
+      if (!d.locked) btn(p.x + 12, p.y + p.h - 50, p.w - 24, 36, '팔기 +' + man(d.price * CFG.SIM.DECOR.SELL), () => { done(Sim.sellDecor(st, t.ref.uid), '소품을 팔았어요'); sel = null; });
+      return;
+    }
     if (!m) {
       label('가게 꾸미기', p.x + p.w / 2, p.y + 30, C.ink, 'center', 18);
-      ['기계를 끌어서', '자리를 옮겨요.', '', '기계를 누르면', '난이도, 가격,', '진열을 바꿔요.', '', '주문한 인형은', '다음 영업 아침에', '들어와요.'].forEach((t, i) => label(t, p.x + p.w / 2, p.y + 70 + i * 24, C.sub, 'center'));
+      ['끌어서 옮기고', '눌러서 설정해요.', '', '주문한 인형은', '다음 영업 아침', '창고에 들어와요.'].forEach((s, i) => label(s, mid, p.y + 70 + i * 24, C.sub, 'center'));
+      label('가게 매력 ' + Sim.charmRaw(st).toFixed(1) + ' / ' + Sim.charmCap(st), mid, p.y + 240, C.blue, 'center');
+      const stored = ShopView.things(st).filter((x) => !x.holder.pos).length;
+      if (stored) label('자리 없는 소품 ' + stored + '개', mid, p.y + 268, C.alert, 'center');
       const miss = st.lastMissed;
       if (miss) {
         label('어제 손님이 찾은 취향', p.x + p.w / 2, p.y + 330, C.ink, 'center');
@@ -284,14 +346,22 @@ const Game = (function () {
   }
 
   function drawShopPopup() {
-    popupFrame('상점', 580); // 왼쪽의 탭 버튼과 겹치지 않게
-    [['machine', '기계'], ['equip', '설비'], ['grow', '확장·직원']].forEach(([k, t], i) => btn(PANEL.x + 20 + i * 110, PANEL.y + 12, 100, 34, t, () => { tab = k; page = 0; }, { style: tab === k ? 'primary' : 'secondary' }));
+    popupFrame('상점', 600); // 왼쪽의 탭 버튼과 겹치지 않게
+    [['machine', '기계'], ['equip', '설비'], ['decor', '소품'], ['grow', '확장·직원']].forEach(([k, t], i) => btn(PANEL.x + 20 + i * 104, PANEL.y + 12, 96, 34, t, () => { tab = k; page = 0; }, { style: tab === k ? 'primary' : 'secondary' }));
     const rows = [];
     const rankLock = (r) => (r > st.rank ? (6 - r) + '랭크부터' : null);
     if (tab === 'machine') {
       Object.keys(DATA.MACHINES).forEach((k) => {
         const d = DATA.MACHINES[k];
-        rows.push({ name: d.name, desc: '칸 ' + d.footprint + ' · 넣는 크기 ' + d.sizes.join(' ') + ' · 하루 전기 ' + man(d.power), price: d.price, lock: rankLock(d.rank), buy: () => done(Sim.buyMachine(st, k), '새 기계를 들였어요. 진열을 해 주세요') });
+        rows.push({ name: d.name, desc: '칸 ' + d.footprint + ' · 넣는 크기 ' + d.sizes.join(' ') + ' · 하루 전기 ' + man(d.power), price: d.price, lock: rankLock(d.rank),
+          buy: () => { if (!ShopView.hasRoom(st, { kind: 'machine', w: d.footprint })) { say('놓을 바닥이 없어요. 소품을 옮겨 주세요'); Sound.sfx('buzz'); return; } done(Sim.buyMachine(st, k), '새 기계를 들였어요. 진열을 해 주세요'); } });
+      });
+    } else if (tab === 'decor') {
+      DATA.DECOR.filter((d) => !d.locked).forEach((d) => {
+        const owned = st.decors.filter((o) => o.id === d.id).length;
+        rows.push({ name: d.name + (owned ? ' (' + owned + '개)' : ''), desc: (d.wall ? '벽' : '바닥 ' + d.width + '칸') + ' · 매력 ' + d.charm, price: d.price,
+          lock: d.champion && !st.champion ? '1위 달성 후' : rankLock(d.rank),
+          buy: () => { if (!ShopView.hasRoom(st, { kind: 'decor', w: d.width, wall: !!d.wall })) { say('놓을 자리가 없어요'); Sound.sfx('buzz'); return; } done(Sim.buyDecor(st, d.id), d.name + ' 설치!'); } });
       });
     } else if (tab === 'equip') {
       Object.keys(DATA.EQUIPMENT).filter((k) => !DATA.EQUIPMENT[k].perMachine).forEach((k) => {
@@ -304,8 +374,11 @@ const Game = (function () {
       if (w) rows.push({ name: '창고 확장: ' + w.cap + '개', desc: '하루 유지비 ' + man(w.upkeep), price: w.cost, buy: () => done(Sim.expandWarehouse(st), '창고를 넓혔어요') });
       rows.push({ name: '직원 고용', desc: '하루 월급 ' + man(S.wage) + ' · 건너뛰기가 열려요', price: 0, lock: st.staff ? '근무 중' : rankLock(S.rank), buy: () => done(Sim.hireStaff(st), '직원이 들어왔어요') });
     }
-    rows.forEach((r, i) => {
-      const y = PANEL.y + 70 + i * 62;
+    const per = 5;
+    pager(rows.length, per);
+    if (tab === 'decor') label('가게 매력 ' + Sim.charmRaw(st).toFixed(1) + ' / ' + Sim.charmCap(st) + '  (하루 인기도 +' + Sim.charm(st).toFixed(1) + ')', PANEL.x + PANEL.w - 30, PANEL.y + PANEL.h - 32, C.blue, 'right');
+    rows.slice(page * per, page * per + per).forEach((r, i) => {
+      const y = PANEL.y + 70 + i * 64;
       label(r.name, PANEL.x + 30, y + 12, C.ink, 'left', 18);
       label(r.desc, PANEL.x + 30, y + 38, C.sub);
       label(r.price ? won(r.price) : '', PANEL.x + 600, y + 25, r.price > st.money ? C.alert : C.ink, 'right', 18);
@@ -361,7 +434,7 @@ const Game = (function () {
 
   // 진열: 기계에 넣을 인형 수를 정한다(창고에 있는 인형만).
   function drawPlanPopup() {
-    const m = st.machines.find((x) => x.id === sel);
+    const m = selectedMachine();
     if (!m) { popup = null; return; }
     const def = DATA.MACHINES[m.type];
     popupFrame(mname(m) + ' 진열  (' + Sim.info.slotsUsed(m) + ' / ' + Sim.info.slotsOf(m) + ' 칸)');
@@ -376,7 +449,8 @@ const Game = (function () {
       else if (cur) { const take = Math.min(cur, -n); Sim.addStock(st, d.id, take, m.load[d.id].cost); m.load[d.id].qty -= take; if (!m.load[d.id].qty) delete m.load[d.id]; }
       // 지금 진열을 계획으로 기억한다(영업 중 보충도 이 구성으로)
       m.manual = true; m.plan = {};
-      Object.keys(m.load).forEach((id) => { m.plan[id] = m.load[id].qty; });
+      Object.keys(m.load).forEach((id) => { m.plan[id] = m.load[id].qty; st.stats.shown[id] = 1; });
+      achieve(Sim.checkAchievements(st));
       save();
     };
     list.slice(page * per, page * per + per).forEach((d, i) => {
@@ -395,6 +469,34 @@ const Game = (function () {
     btn(PANEL.x + 560, PANEL.y + PANEL.h - 50, 180, 36, '전부 빼기', () => { Sim.unloadAll(st, m); m.plan = {}; m.manual = true; save(); });
   }
 
+  // ---------- 창고 ----------
+  function drawStockPopup() {
+    const cap = CFG.SIM.WAREHOUSE[st.warehouseLevel].cap, next = CFG.SIM.WAREHOUSE[st.warehouseLevel + 1];
+    popupFrame('창고  ' + Sim.info.stockTotal(st) + ' / ' + cap);
+    const short = shortage();
+    const ids = DATA.DOLLS.map((d) => d.id).filter((id) => stockQty(id) || comingQty(id) || short.indexOf(id) >= 0)
+      .sort((a, b) => (short.indexOf(b) >= 0) - (short.indexOf(a) >= 0));
+    const per = 7;
+    pager(ids.length, per);
+    ['창고', '진열 중', '입고 예정', '지난 영업'].forEach((s, i) => label(s, PANEL.x + 300 + i * 80, PANEL.y + 70, C.sub, 'right'));
+    label('처분(원가의 ' + Math.round(CFG.SIM.STOCK_SELL * 100) + '%)', PANEL.x + 650, PANEL.y + 70, C.sub, 'center');
+    if (!ids.length) label('창고가 비었어요. 발주해 주세요.', 480, 290, C.sub, 'center', 18);
+    ids.slice(page * per, page * per + per).forEach((id, i) => {
+      const d = Sim.info.doll(id), y = PANEL.y + 86 + i * 44, low = short.indexOf(id) >= 0;
+      ShopView.dollIcon(PANEL.x + 26, y + 8, d, 3);
+      label(d.name, PANEL.x + 56, y + 10);
+      label(low ? '모자랄 수 있어요!' : d.size + ' · ' + d.taste.join(', '), PANEL.x + 56, y + 30, low ? C.alert : C.sub);
+      [stockQty(id), loadedTotal(id), comingQty(id), st.used[id] || 0].forEach((v, k) => label(String(v), PANEL.x + 300 + k * 80, y + 20, k === 0 && low ? C.alert : C.ink, 'right'));
+      const sell = (n) => { const r = Sim.sellStock(st, id, n); done(r, r.ok ? r.qty + '개 처분 +' + won(r.gain) : ''); };
+      const none = !stockQty(id);
+      btn(PANEL.x + 575, y + 4, 44, 32, '1', () => sell(1), { disabled: none });
+      btn(PANEL.x + 627, y + 4, 44, 32, '10', () => sell(10), { disabled: none });
+      btn(PANEL.x + 679, y + 4, 60, 32, '전부', () => sell(stockQty(id)), { disabled: none });
+    });
+    if (next) btn(PANEL.x + 500, PANEL.y + PANEL.h - 50, 240, 36, '확장 ' + next.cap + '개 · ' + man(next.cost), () => done(Sim.expandWarehouse(st), '창고를 넓혔어요'), { style: 'primary' });
+    btn(PANEL.x + 360, PANEL.y + PANEL.h - 50, 128, 36, '발주하기', () => { popup = 'order'; page = 0; cart = {}; });
+  }
+
   // ---------- 영업 화면 ----------
   function drawOpen(ctx, now) {
     ShopView.room(st);
@@ -402,20 +504,27 @@ const Game = (function () {
     const tasks = day.tasks();
     const downIds = tasks.filter((k) => k.type === 'repair').map((k) => k.m);
     if (tasks.some((k) => k.type === 'clean')) for (let i = 0; i < 14; i++) UI.rect(g.x + 20 + (i * 97) % (g.w - 40), g.y + g.h - 12 - (i * 53) % (g.h - 80), 6, 4, i % 2 ? '#9a8a6a' : '#b0b8c0');
-    // 기계와 손님을 아래에 있는 것이 앞에 오도록 그린다
-    st.machines.map((m) => ({ y: g.y + (m.pos.y + 1) * ShopView.CH, f: () => ShopView.machine(m, ShopView.machineRect(g, m), { down: downIds.indexOf(m.id) >= 0 }) }))
+    // 놓인 것과 손님을 아래에 있는 것이 앞에 오도록 그린다
+    ShopView.things(st).filter((t) => t.holder.pos).map((t) => ({ y: ShopView.depth(g, t), f: () => ShopView.thing(st, t, ShopView.rectOf(g, t), { down: t.kind === 'machine' && downIds.indexOf(t.ref.id) >= 0 }) }))
       .concat(actors.map((a) => ({ y: a.y, f: () => actorDraw(ctx, a, now) })))
       .sort((a, b) => a.y - b.y).forEach((o) => o.f());
+    boxes = boxes.filter((b) => now - b.t < 0.7);
+    boxes.forEach((b) => {
+      const f = Math.min(1, (now - b.t) / 0.7);
+      const x = b.x0 + (b.x1 - b.x0) * f, y = b.y0 + (b.y1 - b.y0) * f - Math.sin(f * Math.PI) * 40;
+      UI.framed({ x: x - 9, y: y - 8, w: 18, h: 16 }, '#c79a6a', 2); UI.rect(x - 2, y - 8, 4, 16, '#e0b988');
+    });
     pops = pops.filter((p) => now - p.t < 1.1);
     pops.forEach((p) => UI.text(p.text, p.x, p.y - (now - p.t) * 24, 14, p.color, 'center', C.white, 4));
     // 할 일 말풍선(누르면 처리)
     tasks.forEach((k) => {
       let x, y;
-      if (k.m != null) { const r = ShopView.machineRect(g, st.machines.find((m) => m.id === k.m)); x = r.x + r.w / 2; y = r.y - 4 - (k.type === 'repair' && tasks.some((o) => o.m === k.m && o.type === 'refill') ? 34 : 0); }
-      else if (k.type === 'exchange') { x = g.x + ShopView.CW / 2; y = g.y + g.h - ShopView.CH - 4; }
-      else { x = g.x + ShopView.CW * 2; y = g.y + g.h - 52; }
+      const t = findThing(k.m != null ? 'm' + k.m : k.type === 'exchange' ? 'fexchange' : 'ftrash');
+      const r = ShopView.rectOf(g, t);
+      x = r.x + r.w / 2; y = r.y - 4 - (k.type === 'repair' && tasks.some((o) => o.m === k.m && o.type === 'refill') ? 34 : 0);
       const bounce = Math.floor(now * 4) % 2 * 2;
-      btn(x - 30, y - 26 - bounce, 60, 28, TASK[k.type] + (k.type === 'exchange' ? ' ' + k.waiting : ''), () => doTask(k), { style: k.type === 'repair' ? 'danger' : 'primary' });
+      const text = k.noStock ? '재고 없음' : TASK[k.type] + (k.type === 'exchange' ? ' ' + k.waiting : '');
+      btn(x - (k.noStock ? 42 : 30), y - 26 - bounce, k.noStock ? 84 : 60, 28, text, () => doTask(k), { style: k.type === 'repair' ? 'danger' : k.noStock ? 'soft' : 'primary' });
     });
     topBar(now);
     const t = day.time(), hh = CFG.SIM.OPEN + Math.floor(t / 60), mm = String(t % 60).padStart(2, '0');
@@ -436,7 +545,7 @@ const Game = (function () {
     if (!tasks.length) label('지금은 한가해요', p.x + p.w / 2, p.y + 70, C.sub, 'center');
     tasks.slice(0, 9).forEach((k, i) => {
       const m = k.m != null ? st.machines.find((x) => x.id === k.m) : null;
-      btn(p.x + 12, p.y + 46 + i * 46, p.w - 24, 36, TASK[k.type] + (m ? ' · ' + mname(m) : k.type === 'exchange' ? ' · ' + k.waiting + '명' : ''), () => doTask(k), { style: k.type === 'repair' ? 'danger' : 'secondary' });
+      btn(p.x + 12, p.y + 46 + i * 46, p.w - 24, 36, (k.noStock ? '재고 없음' : TASK[k.type]) + (m ? ' · ' + mname(m) : k.type === 'exchange' ? ' · ' + k.waiting + '명' : ''), () => doTask(k), { style: k.type === 'repair' ? 'danger' : k.noStock ? 'soft' : 'secondary' });
     });
   }
 
@@ -465,7 +574,7 @@ const Game = (function () {
     label('평판 ' + Math.round(R.rep) + ' (' + (R.repDelta >= 0 ? '+' : '') + R.repDelta.toFixed(1) + ')', PANEL.x + 40, PANEL.y + 352, C.sub);
     const x = PANEL.x + 420;
     label('인기도 ' + Math.round(R.popularity), x, PANEL.y + 86, C.ink, 'left', 18);
-    const names = { sales: '장사', satisfaction: '손님 만족', soldOut: '품절', exchange: '환전 지연', dirty: '지저분함', claims: '항의', fade: '잊힘' };
+    const names = { sales: '장사', satisfaction: '손님 만족', decor: '가게 매력', soldOut: '품절', exchange: '환전 지연', dirty: '지저분함', claims: '항의', fade: '잊힘' };
     Object.keys(names).filter((k) => Math.abs(R.popReasons[k]) >= 0.05).forEach((k, i) => {
       const v = R.popReasons[k], y = PANEL.y + 114 + i * 24;
       label(names[k], x, y, C.sub);
@@ -476,6 +585,7 @@ const Game = (function () {
     label(miss.length ? miss.join(', ') : '없음', x, PANEL.y + 320, C.alert);
     if (R.rankUp) label('축하해요! ' + (6 - R.rankUp) + '랭크로 올랐어요!', 480, PANEL.y + 388, C.blue, 'center', 22);
     if (R.champion) label('전국 1위 달성!', 480, PANEL.y + 388, C.alert, 'center', 28);
+    if (R.achieved.length) label('도전과제 ' + R.achieved.length + '개 달성: ' + R.achieved.map((a) => a.name).slice(0, 4).join(', '), 480, PANEL.y + 372 - 14, '#8a5a1a', 'center');
     if (st.bankrupt) {
       label('돈이 모두 떨어졌어요…', 480, PANEL.y + 388, C.alert, 'center', 22);
       btn(360, PANEL.y + PANEL.h - 58, 240, 44, '처음부터 다시', () => { State.data.sim = null; enter(); }, { style: 'danger', size: 18 });
@@ -498,14 +608,22 @@ const Game = (function () {
       drawBuild(ctx);
       if (popup === 'shop') drawShopPopup();
       else if (popup === 'order') drawOrderPopup();
+      else if (popup === 'stock') drawStockPopup();
       else if (popup === 'plan') drawPlanPopup();
     }
     if (msg && now < msg.until) {
       UI.chip({ x: 250, y: 66, w: 460, h: 32 });
       label(msg.text, 480, 82, C.ink, 'center');
     }
+    if (toast && now > toast.until) toast = null;
+    if (!toast && toasts.length) { toast = { a: toasts.shift(), until: now + (toasts.length > 2 ? 1.2 : 2.5) }; Sound.sfx('fanfare'); }
+    if (toast) {
+      UI.panel({ x: 150, y: 8, w: 420, h: 42 }, '#fff6cf', 3); // 위쪽 정보 줄에 띄워 가게의 버튼을 가리지 않는다
+      label('도전과제 달성! ' + toast.a.name, 360, 20, C.ink, 'center');
+      label(rewardText(toast.a.reward), 360, 39, '#8a5a1a', 'center');
+    }
     ctx.restore();
   }
 
-  return { enter, leave, escape, draw, press, move, release };
+  return { enter, leave, escape, draw, press, move, release, rewardText };
 })();

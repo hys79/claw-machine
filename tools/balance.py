@@ -58,6 +58,9 @@ DESC = {
     'SIM.STAFF.rank': ('직원', '고용할 수 있는 단계(3=3랭크)'), 'SIM.STAFF.wage': ('직원', '하루 월급(원)'),
     'SIM.SKIP_NEAR_TOP': ('건너뛰기', '1위 점수의 이 비율부터 건너뛰기 불가'),
     'SIM.START_REP': ('평판', '시작 평판(0~100)'),
+    'SIM.DECOR.DUP': ('소품', '같은 소품을 또 놓을 때 효과 배수'), 'SIM.DECOR.CAP': ('소품', '점포 단계별 매력 상한(0=8평 … 3=40평)'),
+    'SIM.DECOR.SELL': ('소품', '소품을 팔 때 받는 비율'), 'SIM.STOCK_SELL': ('창고', '인형 처분 가격(원가 비율)'),
+    'SIM.FAST_TASK': ('도전과제', '번개 사장: 이 시간(분) 안에 처리'),
     'SIM.BREAK_BASE': ('고장', '기계 하루 고장 확률 기본값'), 'SIM.BREAK_AGE': ('고장', '가동일 하루당 늘어나는 확률'),
     'SIM.BREAK_MAX': ('고장', '고장 확률 상한'), 'SIM.DURABLE_MULT': ('고장', '내구성 개조: 고장 확률 배수'),
     'SIM.CAPACITY_MULT': ('설비', '대용량 개조: 진열 칸 배수'),
@@ -86,6 +89,8 @@ def table_specs(tastes):
         ('손님', ['DATA', 'CUSTOMERS'], 'list', [('분류', 'name'), ('등장 단계', 'rank'), ('방문 비중', 'weight')] + [('취향 ' + t, 'tastes.' + t) for t in tastes]
             + [('몰리는 시작', 'time.hours.0'), ('몰리는 끝', 'time.hours.1'), ('그 시간 배수', 'time.mult'), ('다른 시간 배수', 'time.off'), ('주말 배수', 'time.weekend'), ('공연일 배수', 'time.show')]),
         ('설비', ['DATA', 'EQUIPMENT'], 'dict', [('이름', 'name'), ('해금 단계', 'rank'), ('가격', 'price')]),
+        ('소품', ['DATA', 'DECOR'], 'list', [('이름', 'name'), ('해금 단계', 'rank'), ('가격', 'price'), ('차지 칸', 'width'), ('매력(하루 인기도)', 'charm')]),
+        ('도전과제', ['DATA', 'ACHIEVEMENTS'], 'list', [('이름', 'name'), ('목표 값', 'goal'), ('상금', 'reward.money')]),
         ('점포', ['CFG', 'SIM', 'SHOP'], 'index', [('이름', 'name'), ('기계 칸', 'slots'), ('필요 단계', 'rank'), ('월 임대료', 'rent'), ('손님 배수', 'foot'), ('확장비', 'cost')]),
         ('창고', ['CFG', 'SIM', 'WAREHOUSE'], 'index', [('보관 수', 'cap'), ('확장비', 'cost'), ('하루 유지비', 'upkeep')]),
     ]
@@ -223,11 +228,31 @@ def export():
         ws.row_dimensions[1].height = 32
         ws.freeze_panes = 'C2'
 
+    # 내보낼 때의 코드 기본값을 숨긴 시트에 남긴다: 사용자가 고치지 않은 칸은 나중에 코드 값이 바뀌어도 덮어쓰지 않는다
+    ws = wb.create_sheet('_base')
+    for path, v in snapshot(base):
+        ws.append([path, json.dumps(v, ensure_ascii=False)])
+    ws.sheet_state = 'hidden'
+
     os.makedirs(os.path.dirname(XLSX), exist_ok=True)
     if os.path.exists(XLSX):
         shutil.copy(XLSX, XLSX.replace('.xlsx', '.backup.xlsx'))
     wb.save(XLSX)
     print('만들었습니다:', XLSX)
+
+
+def snapshot(base):
+    """표에 실리는 모든 칸의 (경로 문자열, 코드 기본값)"""
+    for _, path, v in scalar_rows(base):
+        yield json.dumps(['CFG'] + path), v
+    for _, loc, kind, cols in table_specs(base['DATA']['TASTES']):
+        for key, item in table_items(base, loc, kind):
+            for _, field in cols:
+                yield json.dumps(cell_path(loc, kind, key, field)), get(item, field)
+
+
+def cell_path(loc, kind, key, field):
+    return loc + [('#' + key) if kind == 'list' else (int(key) if kind == 'index' else key)] + field.split('.')
 
 
 def convert(raw, old, field, where, errors):
@@ -278,6 +303,8 @@ def apply():
             changes.append((['CFG'] + path, new, old, key))
 
     for name, loc, kind, cols in table_specs(base['DATA']['TASTES']):
+        if name not in wb.sheetnames:  # 새로 생긴 표(이전에 만든 엑셀에는 없다)
+            continue
         ws = wb[name]
         header = [c.value for c in ws[1]]
         items = dict(table_items(base, loc, kind))
@@ -318,8 +345,11 @@ def apply():
                     errors.append(where + ': 크기는 S, M, L, XL 중 하나')
                     continue
                 if new != old:
-                    path = loc + [('#' + key) if kind == 'list' else (int(key) if kind == 'index' else key)] + field.split('.')
-                    changes.append((path, new, old, where))
+                    changes.append((cell_path(loc, kind, key, field), new, old, where))
+
+    if '_base' in wb.sheetnames:  # 내보낼 때의 값 그대로인 칸은 수정이 아니다
+        was = {r[0]: json.loads(r[1]) for r in wb['_base'].iter_rows(values_only=True) if r[0]}
+        changes = [c for c in changes if not (json.dumps(c[0]) in was and was[json.dumps(c[0])] == c[1])]
 
     if errors:
         print('적용하지 않았습니다. 아래를 고쳐 주세요:')

@@ -1,5 +1,6 @@
-// 가게 바닥 그리기(3/4 탑다운): 격자 바닥, 벽, 입구, 환전대, 기계(윗면 + 앞면). 계산은 하지 않는다.
-// 좌표는 가운데 960 영역 기준. 기계의 위치 m.pos = {x, y}는 격자 칸이며, 바로 아래 칸은 손님이 서는 자리다.
+// 가게 바닥 그리기(3/4 탑다운)와 배치 규칙. 계산(돈·손님)은 하지 않는다. 좌표는 가운데 960 영역 기준.
+// 놓는 것(thing): 기계 / 설비(환전대·쓰레기통·로봇 청소기) / 소품(바닥·벽). 위치 pos = {x, y} 격자 칸, 벽은 y = -1.
+// 기계는 바로 아래 칸이 손님이 서는 자리다. 벽 오른쪽 끝 칸에는 창고 문이 있다.
 const ShopView = (function () {
   const C = CFG.COLOR;
   const CW = 56, CH = 60;                                  // 격자 한 칸
@@ -14,69 +15,122 @@ const ShopView = (function () {
     const w = cols * CW, h = rows * CH;
     const x = Math.round(AREA.x + (AREA.w - w) / 2);
     const y = Math.round(AREA.y + WALL + (AREA.h - WALL - h) / 2);
-    return { cols, rows, x, y, w, h, door: { x: cols - 1, y: rows - 1 }, exchange: { x: 0, y: rows - 1 } };
+    return { cols, rows, x, y, w, h, door: { x: cols - 1, y: rows - 1 }, store: { x: x + (cols - 1) * CW + 6, y: y - 62, w: CW - 12, h: 50 } };
   }
-  const width = (m) => DATA.MACHINES[m.type].footprint;      // 대형 기계는 두 칸
-  const cellXY = (g, cx, cy) => ({ x: g.x + cx * CW, y: g.y + cy * CH });
-  // 기계의 화면 영역(윗면 포함)과 손님이 서는 자리
-  const machineRect = (g, m) => ({ x: g.x + m.pos.x * CW + 3, y: g.y + m.pos.y * CH - 26, w: width(m) * CW - 6, h: CH + 22 });
-  const standPoint = (g, m) => ({ x: g.x + (m.pos.x + width(m) / 2) * CW, y: g.y + (m.pos.y + 2) * CH - 10 });
+
+  // ---------- 놓는 것 목록 ----------
+  const FIX_NAME = { exchange: '환전대', trash: '쓰레기통', robot: '로봇 청소기' };
+  function things(st) {
+    const list = st.machines.map((m) => ({ key: 'm' + m.id, kind: 'machine', ref: m, holder: m, w: DATA.MACHINES[m.type].footprint }));
+    st.fix = st.fix || {};
+    ['exchange', 'trash'].concat(st.equip.robot ? ['robot'] : []).forEach((k) => {
+      st.fix[k] = st.fix[k] || { pos: null };
+      list.push({ key: 'f' + k, kind: 'fix', ref: k, holder: st.fix[k], w: 1 });
+    });
+    st.decors.forEach((o) => { const d = Sim.decorDef(o.id); if (d) list.push({ key: 'd' + o.uid, kind: 'decor', ref: o, holder: o, w: d.width, wall: !!d.wall, def: d }); });
+    return list;
+  }
+
+  // ---------- 배치 규칙 ----------
+  const cells = (t, p) => Array.from({ length: t.w }, (_, i) => ({ x: p.x + i, y: p.y }));
+  const k = (x, y) => x + ',' + y;
+  // others(이미 놓인 것)와 함께 (x, y)에 놓을 수 있는지
+  function fits(st, t, x, y, others) {
+    const g = geom(st.shopLevel);
+    if (t.wall) {
+      if (y !== -1 || x < 0 || x + t.w > g.cols - 1) return false;
+      return others.every((o) => !o.wall || !o.holder.pos || x + t.w <= o.holder.pos.x || o.holder.pos.x + o.w <= x);
+    }
+    const maxY = t.kind === 'machine' ? g.rows - 2 : g.rows - 1;
+    if (x < 0 || y < 0 || x + t.w > g.cols || y > maxY) return false;
+    const solid = new Set(), front = new Set();
+    const add = (o, p) => cells(o, p).forEach((c) => { solid.add(k(c.x, c.y)); if (o.kind === 'machine') front.add(k(c.x, c.y + 1)); });
+    others.forEach((o) => { if (!o.wall && o.holder.pos) add(o, o.holder.pos); });
+    const door = k(g.door.x, g.door.y);
+    for (const c of cells(t, { x, y })) {
+      if (solid.has(k(c.x, c.y)) || front.has(k(c.x, c.y)) || k(c.x, c.y) === door) return false;
+      if (t.kind === 'machine' && (solid.has(k(c.x, c.y + 1)) || k(c.x, c.y + 1) === door)) return false;
+    }
+    add(t, { x, y });
+    if (solid.has(door)) return false;
+    // 입구에서 모든 기계 앞과 환전대·쓰레기통까지 걸어갈 수 있어야 한다
+    const seen = new Set([door]), queue = [[g.door.x, g.door.y]];
+    while (queue.length) {
+      const [cx, cy] = queue.pop();
+      [[1, 0], [-1, 0], [0, 1], [0, -1]].forEach(([dx, dy]) => {
+        const nx = cx + dx, ny = cy + dy, key = k(nx, ny);
+        if (nx < 0 || ny < 0 || nx >= g.cols || ny >= g.rows || seen.has(key) || solid.has(key)) return;
+        seen.add(key); queue.push([nx, ny]);
+      });
+    }
+    if ([...front].some((f) => !seen.has(f))) return false;
+    return others.concat([Object.assign({}, t, { holder: { pos: { x, y } } })]).every((o) => {
+      if (o.kind !== 'fix' || o.ref === 'robot' || !o.holder.pos) return true;
+      const p = o.holder.pos;
+      return [[1, 0], [-1, 0], [0, 1], [0, -1]].some(([dx, dy]) => seen.has(k(p.x + dx, p.y + dy)));
+    });
+  }
+  function canPlace(st, t, x, y) { return fits(st, t, x, y, things(st).filter((o) => o.key !== t.key)); }
+  function findSpot(st, t, others) {
+    const g = geom(st.shopLevel);
+    if (t.wall) { for (let x = 0; x < g.cols; x++) if (fits(st, t, x, -1, others)) return { x, y: -1 }; return null; }
+    const ys = Array.from({ length: g.rows }, (_, i) => (t.kind === 'machine' ? i : g.rows - 1 - i)); // 기계는 위쪽부터, 나머지는 아래쪽부터
+    for (const y of ys) for (let x = 0; x < g.cols; x++) if (fits(st, t, x, y, others)) return { x, y };
+    return null;
+  }
+  // 자리가 없거나 규칙에 어긋난 것을 빈 곳에 놓는다. 놓을 곳이 없는 것은 pos가 null(보관)로 남는다.
+  function autoPlace(st) {
+    const list = things(st), done = [];
+    const keep = (t) => { done.push(t); };
+    const order = list.slice().sort((a, b) => (a.kind === 'machine' ? 0 : a.kind === 'fix' ? 1 : 2) - (b.kind === 'machine' ? 0 : b.kind === 'fix' ? 1 : 2));
+    const later = [];
+    order.forEach((t) => { const p = t.holder.pos; if (p && fits(st, t, p.x, p.y, done)) keep(t); else later.push(t); });
+    later.forEach((t) => { t.holder.pos = null; t.holder.pos = findSpot(st, t, done); keep(t); });
+    if (st.machines.some((m) => !m.pos)) { // 기계 자리가 안 나오면 전부 다시 놓는다
+      list.forEach((t) => { t.holder.pos = null; });
+      const again = [];
+      order.sort((a, b) => (a.kind === 'machine' && b.kind === 'machine' ? b.w - a.w : 0)).forEach((t) => { t.holder.pos = findSpot(st, t, again); again.push(t); });
+      st.machines.forEach((m) => { m.pos = m.pos || { x: 0, y: 0 }; });
+    }
+  }
+  // 새로 살 것을 놓을 자리가 있는지(사기 전에 확인)
+  function hasRoom(st, t) { return !!findSpot(st, Object.assign({ holder: { pos: null }, key: 'new' }, t), things(st)); }
+
+  // ---------- 화면 좌표 ----------
+  function rectOf(g, t, pos) {
+    pos = pos || t.holder.pos;
+    const x = g.x + pos.x * CW, y = g.y + pos.y * CH;
+    if (t.wall) return { x: x + 4, y: g.y - 56, w: t.w * CW - 8, h: 30 };
+    if (t.kind === 'machine') return { x: x + 3, y: y - 26, w: t.w * CW - 6, h: CH + 22 };
+    if (t.kind === 'fix') return { x: x + 8, y: y + 4, w: CW - 16, h: CH - 12 };
+    return { x: x + 4, y: y - 12, w: t.w * CW - 8, h: CH + 6 };
+  }
+  const standPoint = (g, m) => ({ x: g.x + (m.pos.x + DATA.MACHINES[m.type].footprint / 2) * CW, y: g.y + (m.pos.y + 2) * CH - 10 });
   const doorPoint = (g) => ({ x: g.x + (g.door.x + 0.5) * CW, y: g.y + g.h - 4 });
 
-  // 놓을 수 있는 칸인지: 기계끼리 겹치지 않고, 아래 칸(손님 자리)이 비어 있고, 입구·환전대를 막지 않는다.
-  function canPlace(st, m, cx, cy) {
-    const g = geom(st.shopLevel), w = width(m);
-    if (cx < 0 || cy < 0 || cx + w > g.cols || cy > g.rows - 2) return false;
-    const blocks = (px, py) => (px === g.door.x || px === g.exchange.x) && py === g.rows - 1;
-    for (let i = 0; i < w; i++) if (blocks(cx + i, cy) || blocks(cx + i, cy + 1)) return false;
-    return st.machines.every((o) => {
-      if (o === m || !o.pos) return true;
-      const overlapX = cx < o.pos.x + width(o) && o.pos.x < cx + w;
-      return !overlapX || Math.abs(cy - o.pos.y) >= 2;       // 같은 줄이나 바로 위아래 줄은 안 된다
-    });
-  }
-  // 자리가 없는 기계를 빈 곳에 놓는다.
-  function autoPlace(st) {
-    const g = geom(st.shopLevel);
-    st.machines.forEach((m) => {
-      if (m.pos && canPlace(st, m, m.pos.x, m.pos.y)) return;
-      m.pos = null;
-      for (let y = 0; y < g.rows - 1 && !m.pos; y += 1) for (let x = 0; x < g.cols && !m.pos; x++) if (canPlace(st, m, x, y)) m.pos = { x, y };
-      if (!m.pos) { // 지금 배치로는 자리가 없으면 전부 다시 놓는다
-        st.machines.forEach((o) => { o.pos = null; });
-        st.machines.slice().sort((a, b) => width(b) - width(a)).forEach((o) => {
-          for (let y = 0; y < g.rows - 1 && !o.pos; y++) for (let x = 0; x < g.cols && !o.pos; x++) if (canPlace(st, o, x, y)) o.pos = { x, y };
-          if (!o.pos) o.pos = { x: 0, y: 0 };
-        });
-      }
-    });
-  }
-
+  // ---------- 그리기 ----------
   function room(st, opts) {
     const g = geom(st.shopLevel);
     // 벽
     UI.rect(g.x - 8, g.y - WALL - 4, g.w + 16, g.h + WALL + 12, C.ink);
     UI.rect(g.x - 4, g.y - WALL, g.w + 8, WALL, '#dcebf7');
     UI.rect(g.x - 4, g.y - 12, g.w + 8, 12, '#b8d2e8');
-    for (let i = 0; i * 28 < g.w + 8; i++) UI.rect(g.x - 4 + i * 28, g.y - WALL, Math.min(14, g.w + 8 - i * 28), 12, i % 2 ? '#6ab0f0' : C.blue);
+    for (let i = 0; i * 28 < g.w + 8; i++) UI.rect(g.x - 4 + i * 28, g.y - WALL, Math.min(14, g.w + 8 - i * 28), 10, i % 2 ? '#6ab0f0' : C.blue);
+    // 창고 문
+    const s = g.store;
+    UI.framed(s, '#c79a6a', 2);
+    UI.rect(s.x + 3, s.y + 14, s.w - 6, 3, '#a87a4a'); UI.rect(s.x + s.w - 10, s.y + 28, 4, 8, C.ink);
+    UI.text('창고', s.x + s.w / 2, s.y + 8, 14, C.white);
     // 바닥
     for (let y = 0; y < g.rows; y++) for (let x = 0; x < g.cols; x++) {
-      const p = cellXY(g, x, y);
-      UI.rect(p.x, p.y, CW, CH, (x + y) % 2 ? '#eef3f8' : '#e1eaf2');
-      if (opts && opts.grid) { UI.rect(p.x, p.y, CW, 1, '#a9c0d4'); UI.rect(p.x, p.y, 1, CH, '#a9c0d4'); }
+      const px = g.x + x * CW, py = g.y + y * CH;
+      UI.rect(px, py, CW, CH, (x + y) % 2 ? '#eef3f8' : '#e1eaf2');
+      if (opts && opts.grid) { UI.rect(px, py, CW, 1, '#a9c0d4'); UI.rect(px, py, 1, CH, '#a9c0d4'); }
     }
-    // 환전대(왼쪽 아래)
-    const e = cellXY(g, g.exchange.x, g.exchange.y);
-    const gear = !!st.equip.exchanger;
-    UI.framed({ x: e.x + 8, y: e.y + 4, w: CW - 16, h: CH - 14 }, gear ? '#2aa198' : '#c79a6a', 2);
-    UI.rect(e.x + 8, e.y + 4, CW - 16, 10, gear ? '#4cc4ba' : '#e0b988');
-    UI.coin(e.x + CW / 2 - 8, e.y + 22, 2);
-    // 입구(오른쪽 아래)
-    const d = cellXY(g, g.door.x, g.door.y);
-    UI.rect(d.x + 4, d.y + CH - 10, CW - 8, 14, '#8a6a4a');
-    UI.text('입구', d.x + CW / 2, d.y + CH - 20, 14, C.sub);
-    // 쓰레기통
-    UI.framed({ x: g.x + CW + 14, y: g.y + g.h - 30, w: st.equip.bin ? 30 : 22, h: 26 }, '#7d8b99', 2);
+    // 입구
+    const dx = g.x + g.door.x * CW, dy = g.y + g.door.y * CH;
+    UI.rect(dx + 4, dy + CH - 10, CW - 8, 14, '#8a6a4a');
+    UI.text('입구', dx + CW / 2, dy + CH - 20, 14, C.sub);
   }
 
   function dollIcon(x, y, d, s) {
@@ -86,9 +140,8 @@ const ShopView = (function () {
     UI.rect(x + 2 * s, y + 3 * s, s, s, C.ink); UI.rect(x + 4 * s, y + 3 * s, s, s, C.ink);
   }
 
-  // 기계 하나. o: {x, y(영역 왼쪽 위), selected, down, ghost('ok'|'no')}
+  // 기계 하나. o: {down}
   function machine(m, r, o) {
-    o = o || {};
     const def = DATA.MACHINES[m.type], col = CABINET[m.type];
     const x = r.x, y = r.y, w = r.w, h = r.h;
     UI.rect(x + 4, y + h - 4, w, 8, 'rgba(20,50,77,0.25)');
@@ -115,9 +168,64 @@ const ShopView = (function () {
     UI.rect(x, y + h - 16, w, 16, col[1]);
     UI.rect(x + w / 2 - 8, y + h - 11, 5, 5, '#ffd84a'); UI.rect(x + w / 2 + 3, y + h - 11, 5, 5, '#d9455f');
     if (m.mods.durable) UI.rect(x + 3, y + h - 12, 6, 6, '#ffffff');
-    if (o.selected) { [[x - 5, y - 5, w + 10, 3], [x - 5, y + h + 2, w + 10, 3], [x - 5, y - 5, 3, h + 10], [x + w + 2, y - 5, 3, h + 10]].forEach((a) => UI.rect(a[0], a[1], a[2], a[3], '#ffd84a')); }
-    if (o.ghost) UI.rect(x - 2, y - 2, w + 4, h + 4, o.ghost === 'ok' ? 'rgba(60,200,110,0.35)' : 'rgba(217,69,95,0.45)');
   }
 
-  return { CW, CH, geom, width, cellXY, machineRect, standPoint, doorPoint, canPlace, autoPlace, room, machine, dollIcon, TASTE_COLOR };
+  function fixture(st, key, r) {
+    const { x, y, w, h } = r;
+    if (key === 'exchange') {
+      const auto = !!st.equip.exchanger;
+      UI.framed(r, auto ? '#2aa198' : '#c79a6a', 2);
+      UI.rect(x, y, w, 10, auto ? '#4cc4ba' : '#e0b988');
+      if (auto) UI.rect(x + 8, y + 14, w - 16, 10, '#14324d');
+      UI.coin(x + w / 2 - 8, y + h - 20, 2);
+    } else if (key === 'trash') {
+      const big = !!st.equip.bin, bw = big ? 34 : 22, bh = big ? 36 : 28;
+      const b = { x: x + (w - bw) / 2, y: y + h - bh, w: bw, h: bh };
+      UI.framed(b, big ? '#3f9a5a' : '#7d8b99', 2);
+      UI.rect(b.x - 2, b.y, b.w + 4, 6, C.ink);
+      UI.rect(b.x + bw / 2 - 5, b.y + 12, 10, 10, '#ffffff');
+    } else {
+      UI.framed({ x: x + 4, y: y + h - 22, w: w - 8, h: 16 }, '#e4eff8', 2);
+      UI.rect(x + w / 2 - 3, y + h - 18, 6, 6, '#2f80d0');
+      UI.rect(x + 6, y + h - 34, 6, 12, '#7d8b99');
+    }
+  }
+
+  // 소품 그림(바닥·벽)
+  const ART = {
+    plant: (r, cx, b) => { UI.framed({ x: cx - 11, y: b - 20, w: 22, h: 18 }, '#c97a4a', 2); [[-14, -38, 16, 16], [0, -42, 14, 18], [-6, -50, 12, 14]].forEach((a) => UI.rect(cx + a[0], b + a[1], a[2], a[3], '#3f9a5a')); UI.rect(cx - 2, b - 30, 4, 12, '#2c7a44'); },
+    trophy: (r, cx, b) => { UI.framed({ x: cx - 14, y: b - 14, w: 28, h: 12 }, '#8a6a4a', 2); UI.rect(cx - 3, b - 26, 6, 12, '#f2c14e'); UI.framed({ x: cx - 10, y: b - 44, w: 20, h: 18 }, '#ffd84a', 2); },
+    bench: (r, cx, b) => { UI.framed({ x: r.x + 6, y: b - 34, w: r.w - 12, h: 10 }, '#c79a6a', 2); UI.framed({ x: r.x + 4, y: b - 20, w: r.w - 8, h: 10 }, '#e0b988', 2); UI.rect(r.x + 10, b - 8, 6, 8, C.ink); UI.rect(r.x + r.w - 16, b - 8, 6, 8, C.ink); },
+    photozone: (r, cx, b) => { UI.framed({ x: r.x + 6, y: r.y + 4, w: r.w - 12, h: r.h - 12 }, '#ffd6e4', 3); UI.framed({ x: r.x + 16, y: r.y + 14, w: r.w - 32, h: r.h - 34 }, '#d8f1ff', 2); dollIcon(cx - 14, b - 42, { taste: ['귀여움'] }, 4); },
+    aquarium: (r, cx, b) => { UI.framed({ x: r.x + 6, y: b - 46, w: r.w - 12, h: 36 }, '#5cc0e8', 2); UI.rect(r.x + 4, b - 10, r.w - 8, 10, C.ink); [[16, -34, '#ffb347'], [50, -22, '#ff9fbc'], [76, -38, '#ffd84a']].forEach((f) => { UI.rect(r.x + f[0], b + f[1], 10, 6, f[2]); UI.rect(r.x + f[0] - 4, b + f[1] + 1, 4, 4, f[2]); }); },
+    mascot: (r, cx, b) => { UI.framed({ x: cx - 32, y: b - 10, w: 64, h: 8 }, '#7d8b99', 2); dollIcon(cx - 28, b - 66, { taste: ['아이돌'] }, 8); },
+    goldstatue: (r, cx, b) => { UI.framed({ x: cx - 30, y: b - 16, w: 60, h: 14 }, '#8a5a1a', 2); dollIcon(cx - 25, b - 66, { taste: ['희귀'] }, 7); UI.rect(cx + 20, b - 68, 4, 12, '#ffffff'); UI.rect(cx + 16, b - 64, 12, 4, '#ffffff'); },
+    arcadeset: (r, cx, b) => { UI.framed({ x: cx - 17, y: b - 52, w: 34, h: 50 }, '#d9455f', 2); UI.framed({ x: cx - 11, y: b - 46, w: 22, h: 18 }, '#14324d', 2); UI.rect(cx - 5, b - 40, 8, 6, '#7ccf6a'); UI.rect(cx - 10, b - 18, 6, 6, '#ffd84a'); UI.rect(cx + 4, b - 18, 6, 6, '#ffffff'); },
+    crown: (r, cx, b) => { UI.framed({ x: cx - 18, y: b - 20, w: 36, h: 18 }, '#5f50b8', 2); UI.framed({ x: cx - 14, y: b - 38, w: 28, h: 14 }, '#ffd84a', 2); [-14, -3, 8].forEach((d) => UI.rect(cx + d, b - 48, 6, 10, '#ffd84a')); },
+    poster: (r) => { UI.framed({ x: r.x + 10, y: r.y - 2, w: r.w - 20, h: r.h + 2 }, '#ffffff', 2); dollIcon(r.x + r.w / 2 - 7, r.y + 7, { taste: ['귀여움'] }, 2); },
+    neon: (r, cx) => { UI.framed(r, '#14324d', 2); UI.text('뽑기!', cx, r.y + r.h / 2, 14, '#ff9fbc'); },
+    ledboard: (r, cx) => { UI.framed(r, '#14324d', 3); for (let i = 0; i < Math.floor(r.w / 12) - 1; i++) UI.rect(r.x + 8 + i * 12, r.y + 3, 5, 3, ['#ffd84a', '#7ccf6a', '#ff9fbc'][i % 3]); UI.text('ARENA LIVE', cx, r.y + r.h / 2 + 3, 14, '#6ab0f0'); },
+    goldframe: (r) => { UI.framed({ x: r.x + 10, y: r.y, w: r.w - 20, h: r.h - 2 }, '#ffd84a', 2); UI.rect(r.x + 15, r.y + 5, r.w - 30, r.h - 12, '#d8f1ff'); },
+  };
+  function decor(id, r) {
+    const draw = ART[id], cx = r.x + r.w / 2, b = r.y + r.h - 2;
+    const wall = Sim.decorDef(id).wall;
+    if (!wall) UI.rect(r.x + 6, b - 2, r.w - 8, 6, 'rgba(20,50,77,0.2)');
+    if (draw) draw(r, cx, b); else UI.framed({ x: r.x + 6, y: r.y + 10, w: r.w - 12, h: r.h - 16 }, '#c9d9e6', 2);
+  }
+
+  // 놓는 것 하나를 r에 그린다. o: {selected, down, ghost('ok'|'no')}
+  function thing(st, t, r, o) {
+    o = o || {};
+    if (t.kind === 'machine') machine(t.ref, r, o);
+    else if (t.kind === 'fix') fixture(st, t.ref, r);
+    else decor(t.ref.id, r);
+    const x = r.x, y = r.y, w = r.w, h = r.h;
+    if (o.selected) [[x - 5, y - 5, w + 10, 3], [x - 5, y + h + 2, w + 10, 3], [x - 5, y - 5, 3, h + 10], [x + w + 2, y - 5, 3, h + 10]].forEach((a) => UI.rect(a[0], a[1], a[2], a[3], '#ffb300'));
+    if (o.ghost) UI.rect(x - 2, y - 2, w + 4, h + 4, o.ghost === 'ok' ? 'rgba(60,200,110,0.35)' : 'rgba(217,69,95,0.45)');
+  }
+  // 앞뒤 순서: 아래 줄에 있는 것이 앞
+  const depth = (g, t) => (t.wall ? -1000 : g.y + (t.holder.pos.y + 1) * CH);
+
+  return { CW, CH, FIX_NAME, geom, things, canPlace, autoPlace, hasRoom, rectOf, depth, standPoint, doorPoint, room, thing, dollIcon, TASTE_COLOR };
 })();

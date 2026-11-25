@@ -213,6 +213,11 @@ DATA.DOLLS = [
   { id: 'cheerbear', name: '루미나 응원봉 곰', size: 'L', cost: 10000, taste: ['아이돌', '동물'], hard: 0.2, rank: 2 },
   { id: 'classicbear', name: '빈티지 태엽 곰', size: 'L', cost: 11000, taste: ['레트로', '희귀'], hard: 0.25, rank: 3 },
   { id: 'stagebear', name: '특별 무대 응원 곰', size: 'M', cost: 4800, taste: ['아이돌', '희귀'], hard: 0.2, rank: 2, special: true },
+  // 도전과제 보상으로만 해금되는 인형(locked: true)
+  { id: 'goldchick', name: '황금 병아리', size: 'S', cost: 900, taste: ['희귀', '귀여움'], hard: 0.1, rank: 1, locked: true },
+  { id: 'rainbowwhale', name: '무지개 고래', size: 'M', cost: 3600, taste: ['희귀', '동물'], hard: 0.15, rank: 1, locked: true },
+  { id: 'arcadecat', name: '오락실 고양이', size: 'M', cost: 3200, taste: ['레트로', '귀여움'], hard: 0.1, rank: 1, locked: true },
+  { id: 'mooncake', name: '달떡 토끼 쿠션', size: 'L', cost: 8200, taste: ['음식', '희귀'], hard: 0.15, rank: 1, locked: true },
   { id: 'megabear', name: '거대 뭉치 곰', size: 'XL', cost: 28000, taste: ['동물', '귀여움'], hard: 0, rank: 3 },
   { id: 'jumborobot', name: '초대형 태엽 로봇', size: 'XL', cost: 34000, taste: ['레트로', '희귀'], hard: 0, rank: 3 },
   { id: 'jumboidol', name: '루미나 점보 마스코트', size: 'XL', cost: 36000, taste: ['아이돌', '귀여움'], hard: 0, rank: 3 },
@@ -267,3 +272,44 @@ DATA.EQUIPMENT = {
   capacity: { name: '대용량 진열 개조', rank: 4, price: 300000, perMachine: true, desc: '진열 칸이 1.5배(타이머 기계 제외).' },
   durable: { name: '내구성 개조', rank: 4, price: 250000, perMachine: true, desc: '고장이 크게 준다.' },
 };
+
+// 인테리어 소품: wall true면 벽에 걸고(바닥 칸을 안 쓴다), width는 차지하는 칸. charm은 하루 인기도 보너스.
+// rank 해금 단계, champion: 전국 1위 뒤에 구입, locked: 도전과제 보상(살 수 없고 받는다)
+DATA.DECOR = [
+  { id: 'plant', name: '화분', rank: 1, price: 50000, width: 1, charm: 0.4 },
+  { id: 'poster', name: '인형 포스터', rank: 1, price: 50000, width: 1, charm: 0.3, wall: true },
+  { id: 'bench', name: '휴게 벤치', rank: 2, price: 300000, width: 2, charm: 1.5 },
+  { id: 'neon', name: '네온 간판', rank: 2, price: 800000, width: 2, charm: 2.5, wall: true },
+  { id: 'photozone', name: '포토존', rank: 3, price: 3000000, width: 2, charm: 6 },
+  { id: 'aquarium', name: '대형 수족관', rank: 4, price: 8000000, width: 2, charm: 10 },
+  { id: 'mascot', name: '대형 마스코트 조형물', rank: 5, price: 15000000, width: 2, charm: 14 },
+  { id: 'ledboard', name: '아레나 연동 전광판', rank: 5, price: 50000000, width: 3, charm: 25, wall: true },
+  { id: 'goldstatue', name: '황금 인형 동상', rank: 5, price: 100000000, width: 2, charm: 35, champion: true },
+  { id: 'trophy', name: '새내기 트로피', rank: 1, price: 0, width: 1, charm: 1, locked: true },
+  { id: 'arcadeset', name: '추억의 오락기', rank: 1, price: 0, width: 1, charm: 3, locked: true },
+  { id: 'goldframe', name: '황금 액자', rank: 1, price: 0, width: 1, charm: 3, wall: true, locked: true },
+  { id: 'crown', name: '챔피언 왕관 전시대', rank: 1, price: 0, width: 1, charm: 20, locked: true },
+];
+
+// 도전과제: stat(코어가 세는 값)이 goal 이상이면 달성. reward: money(원) / doll(해금) / decor(지급)
+DATA.ACHIEVEMENTS = [
+  { id: 'open', group: '성장', name: '개업 첫날', desc: '첫 영업을 마친다', stat: 'days', goal: 1, reward: { money: 100000 } },
+  { id: 'rank4', group: '성장', name: '상권 대표', desc: '4랭크에 오른다', stat: 'rank', goal: 2, reward: { decor: 'trophy' } },
+  { id: 'rank3', group: '성장', name: '도시 명소', desc: '3랭크에 오른다', stat: 'rank', goal: 3, reward: { doll: 'rainbowwhale' } },
+  { id: 'rank2', group: '성장', name: '지역 강자', desc: '2랭크에 오른다', stat: 'rank', goal: 4, reward: { money: 2000000 } },
+  { id: 'rank1', group: '성장', name: '전국구', desc: '1랭크에 오른다', stat: 'rank', goal: 5, reward: { decor: 'goldframe' } },
+  { id: 'champion', group: '성장', name: '전국 1등', desc: '전국 순위 1위를 차지한다', stat: 'champion', goal: 1, reward: { decor: 'crown' } },
+  { id: 'rev50', group: '장사', name: '잘나가는 날', desc: '하루 매출 50만 원', stat: 'bestRevenue', goal: 500000, reward: { money: 200000 } },
+  { id: 'rev150', group: '장사', name: '대박 난 날', desc: '하루 매출 150만 원', stat: 'bestRevenue', goal: 1500000, reward: { doll: 'mooncake' } },
+  { id: 'win100', group: '장사', name: '인형 100개', desc: '손님이 인형을 누적 100개 뽑는다', stat: 'wins', goal: 100, reward: { doll: 'goldchick' } },
+  { id: 'win3000', group: '장사', name: '인형 3,000개', desc: '손님이 인형을 누적 3,000개 뽑는다', stat: 'wins', goal: 3000, reward: { money: 3000000 } },
+  { id: 'total1', group: '장사', name: '누적 1억', desc: '누적 매출 1억 원', stat: 'totalRevenue', goal: 100000000, reward: { money: 5000000 } },
+  { id: 'fast', group: '운영', name: '번개 사장', desc: '직접 운영한 날, 할 일 5개 이상을 모두 15분(게임 시각) 안에 처리', stat: 'fastDays', goal: 1, reward: { money: 300000 } },
+  { id: 'stocked', group: '운영', name: '품절 없는 일주일', desc: '빈 기계 때문에 돌아간 손님 없이 7일 연속 영업', stat: 'bestStockStreak', goal: 7, reward: { decor: 'arcadeset' } },
+  { id: 'dolls12', group: '수집', name: '인형 수집가', desc: '서로 다른 인형 12종을 진열한다', stat: 'dollKinds', goal: 12, reward: { money: 500000 } },
+  { id: 'dolls20', group: '수집', name: '인형 박사', desc: '서로 다른 인형 20종을 진열한다', stat: 'dollKinds', goal: 20, reward: { doll: 'arcadecat' } },
+  { id: 'machines', group: '수집', name: '기계 사총사', desc: '네 종류의 기계를 모두 갖춘다', stat: 'machineKinds', goal: 4, reward: { money: 1000000 } },
+  { id: 'decor5', group: '꾸미기', name: '꾸미기 시작', desc: '소품 5개를 놓는다', stat: 'decorCount', goal: 5, reward: { money: 300000 } },
+  { id: 'charm40', group: '꾸미기', name: '사진 맛집', desc: '소품 매력 합계 40', stat: 'charm', goal: 40, reward: { money: 3000000 } },
+  { id: 'statue', group: '꾸미기', name: '황금의 가게', desc: '황금 인형 동상을 놓는다', stat: 'statue', goal: 1, reward: { money: 10000000 } },
+];

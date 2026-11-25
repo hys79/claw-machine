@@ -20,6 +20,7 @@
   let screen = 'title'; // title | intro | name | shop(가게: 건축·영업, js/game.js)
   let modal = null;     // null | help | settings
   let confirmWipe = false;
+  let achievePage = 0;
   let nameError = '';
   let now = 0;
 
@@ -242,6 +243,7 @@
       style: 'primary',
       onClick: () => { if (State.hasSave()) go('shop'); else go('name'); },
     });
+    UI.button(L.achieveBtn, '도전과제', { style: 'secondary', onClick: () => { achievePage = 0; setModal('achieve'); } });
     UI.button(L.helpBtn, '게임 설명', { style: 'secondary', onClick: () => setModal('help') });
     UI.button(L.creditsBtn, '크레딧', { style: 'secondary', onClick: () => setModal('credits') });
     ctx.restore();
@@ -293,7 +295,9 @@
     UI.scrim(W, H);
     ctx.save();
     ctx.translate(OX, 0);
-    if (modal === 'credits') {
+    if (modal === 'achieve') {
+      drawAchievements();
+    } else if (modal === 'credits') {
       const hp = L.creditsPanel;
       UI.panel(hp, C.white);
       UI.text('크레딧', 480, hp.y + 44, 30, C.ink);
@@ -346,6 +350,32 @@
       UI.button({ x: 360, y: sp.y + sp.h - 76, w: 240, h: 52 }, '닫기', { style: 'primary', modal: true, onClick: closeModal });
     }
     ctx.restore();
+  }
+
+  // 도전과제 목록: 지금 저장(가게)의 기록. "처음부터 다시"를 하면 함께 지워진다.
+  function drawAchievements() {
+    const p = L.achievePanel, per = 6, list = DATA.ACHIEVEMENTS;
+    const sim = State.data.sim ? Sim.upgradeState(State.data.sim) : null;
+    const got = sim ? list.filter((a) => sim.ach[a.id]).length : 0;
+    const pages = Math.ceil(list.length / per);
+    UI.panel(p, C.white);
+    UI.text('도전과제  ' + got + ' / ' + list.length, 480, p.y + 32, 26, C.ink);
+    UI.hline(p.x + 24, p.y + 56, p.w - 48);
+    list.slice(achievePage * per, achievePage * per + per).forEach((a, i) => {
+      const y = p.y + 68 + i * 60, done = !!(sim && sim.ach[a.id]);
+      UI.framed({ x: p.x + 24, y: y + 4, w: p.w - 48, h: 48 }, done ? '#fff6cf' : C.white, 2, done ? C.ink : C.line);
+      UI.text(a.name, p.x + 38, y + 18, 18, done ? C.ink : C.sub, 'left');
+      UI.text(a.group + ' · ' + a.desc, p.x + 38, y + 40, 14, C.sub, 'left');
+      UI.text(Game.rewardText(a.reward), p.x + p.w - 38, y + 18, 14, '#8a5a1a', 'right');
+      const now2 = sim ? Math.min(a.goal, Sim.statValue(sim, a.stat)) : 0;
+      const progress = done ? '달성' : (a.goal > 1 && a.stat !== 'rank' ? Math.floor(now2).toLocaleString('ko-KR') + ' / ' + a.goal.toLocaleString('ko-KR') : '미달성');
+      UI.text(progress, p.x + p.w - 38, y + 40, 14, done ? C.blue : C.sub, 'right');
+    });
+    const by = p.y + p.h - 52;
+    UI.button({ x: p.x + 24, y: by, w: 80, h: 38 }, '이전', { style: 'secondary', size: 14, modal: true, onClick: () => { achievePage = (achievePage + pages - 1) % pages; } });
+    UI.text((achievePage + 1) + ' / ' + pages, p.x + 140, by + 19, 14, C.sub);
+    UI.button({ x: p.x + 176, y: by, w: 80, h: 38 }, '다음', { style: 'secondary', size: 14, modal: true, onClick: () => { achievePage = (achievePage + 1) % pages; } });
+    UI.button({ x: p.x + p.w - 184, y: by, w: 160, h: 38 }, '닫기', { style: 'primary', size: 18, modal: true, onClick: closeModal });
   }
 
   function draw(ts) {
