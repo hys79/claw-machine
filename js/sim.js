@@ -52,6 +52,7 @@ const Sim = (function () {
   const canHold = (m, d) => mdef(m).sizes.indexOf(d.size) >= 0;
   const placed = (st) => st.machines.filter((m) => !m.stored); // 가게에 설치한 기계(창고에 넣은 것은 제외)
   const placedBins = (st) => st.bins.filter((b) => !b.stored);
+  const exchangerOn = (st) => !!st.equip.exchanger && !(st.fix && st.fix.exchanger && st.fix.exchanger.stored);
   const robotOn = (st) => !!st.equip.robot && !(st.fix && st.fix.robot && st.fix.robot.stored);
   const footUsed = (st) => placed(st).reduce((n, m) => n + mdef(m).footprint, 0);
   const stockTotal = (st) => Object.keys(st.stock).reduce((n, id) => n + st.stock[id].qty, 0);
@@ -104,6 +105,8 @@ const Sim = (function () {
       delete st.fix.trash; if (st.equip) delete st.equip.bin;
     }
     if (st.tutorial === undefined) st.tutorial = 'done';
+    if (st.equip && st.equip.exchanger && !st.fix.exchanger) st.fix.exchanger = { pos: (st.fix.exchange && st.fix.exchange.pos) || null, stored: false };
+    delete st.fix.exchange; // 붙박이 환전대는 없어졌다(손님에게 직접 가서 바꿔 준다)
     st.ach = st.ach || {};
     st.unlocked = st.unlocked || {};
     st.used = st.used || {};     // 지난 영업일에 뽑혀 나간 인형 수(창고의 '모자랄 인형' 경고)
@@ -289,7 +292,7 @@ const Sim = (function () {
       if (st.equip[key]) return { ok: false, why: '이미 있어요' };
       if (!pay(st, e.price)) return NO_MONEY;
       st.equip[key] = true;
-      if (key === 'robot') st.fix.robot = { pos: null, stored: !!(opts && opts.store) };
+      if (key === 'robot' || key === 'exchanger') st.fix[key] = { pos: null, stored: !!(opts && opts.store) }; // 가게에 놓는 설비
     }
     return { ok: true, cost: e.price };
   }
@@ -450,7 +453,7 @@ const Sim = (function () {
   function openDay(st, opts) {
     opts = opts || {};
     const mode = opts.mode || 'manual';
-    const delay = mode === 'manual' ? Infinity : Z.RESPOND[mode];
+    let delay = mode === 'manual' ? Infinity : Z.RESPOND[mode];
     const env = st.env || startOfDay(st);
     upgradeState(st);
     if (deliver(st)) placed(st).forEach((m) => refill(st, m)); // 아침 입고분을 진열한다
@@ -519,7 +522,7 @@ const Sim = (function () {
       if (!k) return false;
       if (t - k.t > Z.FAST_TASK) R.lateTasks++;
       if (type === 'clean') { litter = 0; }
-      else if (type === 'exchange') { waiting.forEach((c) => join(c)); waiting = []; }
+      else if (type === 'exchange') { const c = waiting.find((w) => w.id === mid); if (c) join(c); waiting = waiting.filter((w) => w !== c); } // 환전은 손님 한 명씩
       else if (type === 'repair') {
         const r = byId[mid];
         r.down = false; r.repair += Math.round(r.def.repair * (costMult || 1));
@@ -643,7 +646,7 @@ const Sim = (function () {
       join(c); // 계속: 다시 줄 끝에 선다(줄이 없으면 바로 이어서 한다)
     }
 
-    function arrive(h) {
+    function arrive(h, force) { // force: 개발자 모드에서 환전 손님을 바로 만든다
       const cat = pickCategory(h), C = Z.CUSTOMER;
       const c = {
         id: ++cid, cat, tastes: pickTastes(cat),
@@ -654,15 +657,25 @@ const Sim = (function () {
       R.visitors++; R.byType[cat.id].visitors++;
       ev('arrive', { c: c.id, cat: cat.id, tastes: c.tastes });
       if (findTask('clean', null)) { c.sat -= Z.LITTER.sat; R.dirty++; }
-      const tgt = chooseTarget(c);
+      const tgt = chooseTarget(c) || (force && mrt.length ? { r: mrt[0], id: null } : null);
       if (!tgt) { leave(c, 'nothing'); return; }
-      if (c.budget < tgt.r.m.price) { leave(c, 'budget'); return; }
+      if (!force && c.budget < tgt.r.m.price) { leave(c, 'budget'); return; }
       c.doll = tgt.id; c.target = tgt.r;
       // 환전이 필요한 손님은 처리해 줄 때까지 기다린다
-      let ex = Z.EXCHANGE.chance * (st.equip.exchanger ? Z.EXCHANGE.exchangerKeep : 1);
+      let ex = Z.EXCHANGE.chance * (exchangerOn(st) ? Z.EXCHANGE.exchangerKeep : 1);
       if (st.equip.globalpay && cat.id === 'kpop') ex = 0;
-      if (rng() < ex) { waiting.push(c); ev('exchange', { c: c.id }); addTask('exchange', null); return; }
+      if (force || rng() < ex) { waiting.push(c); ev('exchange', { c: c.id }); addTask('exchange', c.id); return; }
       join(c);
+    }
+
+    // 개발자 모드(플레이 테스트)용: 원하는 상황을 바로 만든다
+    function debug(kind) {
+      if (kind === 'auto') delay = delay === Infinity ? 1 : Infinity;
+      else if (kind === 'break') { const r = mrt.find((x) => !x.down); if (r) { r.down = true; r.brokeAt = t; addTask('repair', r.m.id); ev('breakdown', { m: r.m.id }); } }
+      else if (kind === 'litter') { for (let i = 0; i < litterLimit; i++) { litter++; ev('litter', { c: -1 - i }); } addTask('clean', null); }
+      else if (kind === 'exchange') arrive(Z.OPEN + Math.floor(Math.min(t, TICKS - 1) / 60), true);
+      else if (kind === 'empty') { const r = mrt.find((x) => loadQty(x.m) > 0); if (r) { unloadAll(st, r.m); r.refillWait = 0; } }
+      return delay !== Infinity;
     }
 
     function tick() {
@@ -683,9 +696,10 @@ const Sim = (function () {
       const n = rng.poisson(visitorsToday * (hourMult(h) / wsum) / 60);
       for (let i = 0; i < n; i++) arrive(h);
       // 환전을 기다리다 나가는 손님
-      const coming = (findTask('exchange', null) || {}).claimed; // 사장님이 가고 있으면 기다린다
-      waiting = waiting.filter((c) => { if (!coming && t - c.waitFrom > Z.EXCHANGE.wait) { leave(c, 'exchange'); return false; } return true; });
-      if (!waiting.length) dropTask('exchange', null);
+      waiting = waiting.filter((c) => {
+        if ((findTask('exchange', c.id) || {}).claimed || t - c.waitFrom <= Z.EXCHANGE.wait) return true; // 사장님이 가고 있으면 기다린다
+        dropTask('exchange', c.id); leave(c, 'exchange'); return false;
+      });
       // 기계 이용
       mrt.forEach((r) => {
         if (r.down) r.queue.forEach((c) => { c.waitFrom = Math.min(c.waitFrom, t); });
@@ -779,7 +793,8 @@ const Sim = (function () {
       act: (type, mid) => { events = []; const ok = act(type, mid); return { ok, events }; },
       claim: (type, mid, on) => { const k = findTask(type, mid == null ? null : mid); if (k) k.claimed = !!on; },
       pickLitter: () => { events = []; return pickLitter(); },
-      tasks: () => tasks.map((k) => Object.assign({}, k, { waiting: k.type === 'exchange' ? waiting.length : undefined, noStock: k.type === 'refill' ? !canRefill(st, byId[k.m].m) : false })),
+      debug: (kind) => { events = []; debug(kind); return events; },
+      tasks: () => tasks.map((k) => Object.assign({}, k, { noStock: k.type === 'refill' ? !canRefill(st, byId[k.m].m) : false })),
       time: () => t,
       done: () => t >= TICKS,
       result: R,
@@ -928,6 +943,6 @@ const Sim = (function () {
     buyMachine, sellMachine, buyEquipment, expandWarehouse, expandShop, hireStaff, setOption, order, unitCost, orderable, nextSpecial,
     loadMachine, unloadAll, refill, addStock, sellStock,
     upgradeState, canOpen, canInstall, installMachine, storeMachine, sellBin, sellEquipment, buyDecor, sellDecor, canBuyDecor, decorDef, charm, charmRaw, charmCap, checkAchievements, statValue,
-    info: { placed, placedBins, canRefill, slotsOf, slotsUsed, loadQty, freeSlots, footUsed, stockTotal, incomingTotal, canHold, grabProb, doll, TICKS, isShowDay, isSpecialDay },
+    info: { exchangerOn, placed, placedBins, canRefill, slotsOf, slotsUsed, loadQty, freeSlots, footUsed, stockTotal, incomingTotal, canHold, grabProb, doll, TICKS, isShowDay, isSpecialDay },
   };
 })();

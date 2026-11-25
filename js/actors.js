@@ -7,6 +7,7 @@ const Actors = (function () {
   const STAY = 1.6;                              // 볼일을 마친 손님이 자리에 머무는 시간(초)
 
   let st = null, g = null, solid = null;
+  let cats = {};
   let customers = [], hero = null, litter = [], jobs = [], job = null, litterId = 0;
 
   // ---------- 격자와 길찾기 ----------
@@ -87,15 +88,17 @@ const Actors = (function () {
 
   // ---------- 자리 ----------
   const thing = (k) => ShopView.things(st).find((t) => t.key === k);
-  // 놓인 것 앞에 서는 칸: 기계는 바로 아래, 설비는 옆의 빈 칸
+  // 놓인 것 앞에 서는 칸: 기계는 앞면 쪽, 설비는 옆의 빈 칸
   function frontCell(k) {
     const t = thing(k);
     if (!t || !t.holder.pos) return { x: g.door.x, y: g.door.y };
     const p = t.holder.pos;
-    if (t.kind === 'machine') return { x: p.x + Math.floor((t.w - 1) / 2), y: p.y + 1 };
+    if (t.kind === 'machine') { const f = ShopView.frontOf(t); return f[Math.floor((f.length - 1) / 2)]; }
     for (const [dx, dy] of [[0, 1], [1, 0], [0, -1], [-1, 0]]) if (free(p.x + dx, p.y + dy) && bfs({ x: g.door.x, y: g.door.y }, { x: p.x + dx, y: p.y + dy })) return { x: p.x + dx, y: p.y + dy };
     return spread(p, 1)[0] || p;
   }
+  // 기계 앞에 선 사람이 기계를 보는 방향(기계 회전값): 0 위 / 1 오른쪽 / 2 아래 / 3 왼쪽
+  const faceOf = (k) => { const t = k && thing(k); return t && t.kind === 'machine' ? ShopView.rotOf(t) : 0; };
   const storeCell = () => spread({ x: g.cols - 1, y: 0 }, 1)[0];
   const randomCell = (seed) => { const list = spread({ x: g.door.x, y: g.door.y }, g.cols * g.rows); return list[(seed * 7 + 3) % list.length]; };
 
@@ -103,16 +106,16 @@ const Actors = (function () {
   function reset(state) {
     st = state; g = ShopView.geom(st.shopLevel);
     solid = new Set();
-    ShopView.things(st).forEach((t) => { if (!t.wall && t.holder.pos) for (let i = 0; i < t.w; i++) solid.add(key(t.holder.pos.x + i, t.holder.pos.y)); });
-    customers = []; litter = []; jobs = []; job = null;
+    ShopView.things(st).forEach((t) => { if (!t.wall && t.holder.pos) ShopView.cells(t, t.holder.pos).forEach((c) => solid.add(key(c.x, c.y))); });
+    customers = []; litter = []; jobs = []; job = null; cats = {};
     const start = feet(spread({ x: 1, y: g.rows - 1 }, 1)[0]);
     hero = { x: start.x, y: start.y, path: [], goal: null, left: false, moving: false, carry: null, anim: null };
   }
 
   // ---------- 손님 ----------
   const find = (id) => customers.find((a) => a.id === id);
-  function spawn(e) {
-    if (customers.length >= MAX_CUSTOMERS) return; // 대표 손님만 그린다
+  function spawn(e, force) {
+    if (customers.length >= MAX_CUSTOMERS && !force) return; // 대표 손님만 그린다(도움을 청하는 손님은 항상)
     const P = Cutscene.art.NPC_PALS;
     const pal = e.cat === 'normal' ? P[e.c % P.length] : P[(e.cat === 'mania' ? 1 : 2) % P.length];
     const door = ShopView.doorPoint(g);
@@ -121,7 +124,8 @@ const Actors = (function () {
     customers.push(a);
   }
   function onEvent(e) {
-    if (e.type === 'arrive') { spawn(e); return null; }
+    if (e.type === 'arrive') { spawn(e); cats[e.c] = e.cat; return null; }
+    if (e.type === 'exchange' && !find(e.c)) spawn({ c: e.c, cat: cats[e.c] || 'normal' }, true);
     const a = e.c != null ? find(e.c) : null;
     if (e.type === 'litter') {
       const base = a || feet(randomCell(++litterId * 5));
@@ -131,8 +135,8 @@ const Actors = (function () {
     }
     if (!a) return null;
     if (e.type === 'play' || e.type === 'win') { a.state = 'play'; a.target = 'm' + e.m; a.since = a.since || e.c; }
-    else if (e.type === 'exchange') { a.state = 'play'; a.target = 'fexchange'; a.since = e.c; }
-    else if (e.type === 'leave' || e.type === 'balk') a.wantLeave = true; // 자리에 가서 잠깐 머문 뒤 나간다
+    else if (e.type === 'exchange') { a.state = 'ask'; a.target = null; } // 그 자리에서 환전을 도와 달라고 기다린다
+    else if (e.type === 'leave' || e.type === 'balk') { a.wantLeave = true; if (a.state === 'ask') a.state = 'browse'; } // 자리에 가서 잠깐 머문 뒤 나간다
     return a;
   }
   function updateCustomers(dt) {
@@ -172,6 +176,12 @@ const Actors = (function () {
     return i < 0 ? -1 : i + 1;
   }
   const go = (cell) => ({ go: feet(cell) });
+  // 손님 바로 옆(빈 쪽)
+  function beside(c) {
+    const base = c.goal || c;
+    for (const dx of [-30, 30]) { const p = { x: base.x + dx, y: base.y }, cell = cellOf(p); if (p.x > g.x + 12 && p.x < g.x + g.w - 12 && free(cell.x, cell.y)) return p; }
+    return { x: base.x, y: base.y };
+  }
   const work = (anim, sec, end) => ({ anim, sec, end });
   function plan(j, day, hooks) {
     const trash = () => { // 가장 가까운 쓰레기통 앞
@@ -181,9 +191,16 @@ const Actors = (function () {
     };
     const pick = (l) => [{ go: { x: l.x, y: l.y + 2 } }, work('sweep', 0.45, () => { litter = litter.filter((o) => o !== l); hero.carry = 'trash'; hooks.sfx('pop'); })];
     const finish = () => { hooks.done(day.act(j.type, j.m), j); };
-    if (j.type === 'refill') return [go(storeCell()), work('take', 0.5, () => { hero.carry = 'box'; hooks.sfx('click'); }), go(frontCell('m' + j.m)), work('pour', 0.9, () => { hero.carry = null; finish(); })];
-    if (j.type === 'repair') return [go(frontCell('m' + j.m)), work('hammer', 1.4, () => { finish(); })];
-    if (j.type === 'exchange') return [go(frontCell('fexchange')), work('coin', 0.8, () => { finish(); })];
+    const at1 = (k) => Object.assign(go(frontCell(k)), {});
+    const facing = (step, k) => Object.assign(step, { face: faceOf(k) });
+    if (j.type === 'refill') return [go(storeCell()), work('take', 0.5, () => { hero.carry = 'box'; hooks.sfx('click'); }), at1('m' + j.m), facing(work('pour', 0.9, () => { hero.carry = null; finish(); }), 'm' + j.m)];
+    if (j.type === 'repair') return [at1('m' + j.m), facing(work('hammer', 1.4, () => { finish(); }), 'm' + j.m)];
+    if (j.type === 'exchange') { // 도움을 청한 손님에게 직접 간다
+      const c = find(j.m);
+      if (!c) return [];
+      const p = beside(c);
+      return [{ go: p }, Object.assign(work('coin', 0.8, () => { finish(); }), { face: p.x < (c.goal || c).x ? 1 : 3 })];
+    }
     if (j.type === 'litter') {
       const l = litter.find((o) => o.id === j.litter);
       return l ? pick(l).concat([go(trash()), work('dump', 0.45, () => { hero.carry = null; day.pickLitter(); hooks.sfx('confirm'); })]) : [];
@@ -223,7 +240,7 @@ const Actors = (function () {
       setGoal(hero, s.go);
       if (walk(hero, SPEED.hero, dt)) { job.i++; job.t = 0; }
     } else {
-      hero.moving = false; hero.anim = s.anim;
+      hero.moving = false; hero.anim = s.anim; hero.face = s.face || 0;
       const before = job.t; job.t += dt;
       if (s.anim === 'hammer' && Math.floor(before / 0.4) !== Math.floor(job.t / 0.4)) hooks.sfx('hammer');
       if (job.t >= s.sec) { const j = job; s.end(); if (job === j) { job.i++; job.t = 0; } }
@@ -248,25 +265,34 @@ const Actors = (function () {
     UI.rect(a.x - 12, a.y - 3, 24, 5, 'rgba(20,50,77,0.22)');
     ctx.save();
     ctx.translate(Math.round(a.x), Math.round(a.y - img.height * s - bob));
-    if (a.moving && a.left) ctx.scale(-1, 1);
+    if ((a.moving && a.left) || (!a.moving && a.flip)) ctx.scale(-1, 1);
     ctx.drawImage(img, -img.width * s / 2, 0, img.width * s, img.height * s);
     ctx.restore();
     return a.y - img.height * s - bob; // 머리 위 y
   }
+  // 서 있는 방향의 그림: 위를 보면 뒷모습, 옆을 보면 옆모습(왼쪽은 좌우 반전)
+  function standing(a, face) {
+    const art = Cutscene.art;
+    if (face === 0) return { who: a, rows: art.ME_BACK };
+    if (face === 2) return { who: a, rows: art.ME_FRONT };
+    return { who: Object.assign({}, a, { moving: false, flip: face === 3 }), rows: art.ME_WALK[1] };
+  }
   function drawCustomer(ctx, a, now) {
     const art = Cutscene.art;
-    const rows = a.moving ? art.ME_WALK[Math.floor(now * 8 + a.id) % 4] : (a.state === 'play' ? art.ME_BACK : art.ME_FRONT);
+    const st2 = !a.moving && a.state === 'play' ? standing(a, faceOf(a.target)) : { who: a, rows: a.moving ? art.ME_WALK[Math.floor(now * 8 + a.id) % 4] : art.ME_FRONT };
+    const rows = st2.rows;
     const playing = a.state === 'play' && !a.moving && a.slot === 0;
-    const top = person(ctx, playing ? Object.assign({}, a, { x: a.x + Math.floor(now * 4 + a.id) % 2 }) : a, a.pal, rows, now);
+    const top = person(ctx, playing ? Object.assign({}, st2.who, { x: a.x + Math.floor(now * 4 + a.id) % 2 }) : st2.who, a.pal, rows, now);
     if (a.cat !== 'normal') UI.text(a.cat === 'kpop' ? '팬' : '마니아', a.x, top - 8, 14, a.cat === 'kpop' ? '#8a4fc0' : '#8a5a1a', 'center');
   }
   function box(x, y) { UI.framed({ x: x - 11, y, w: 22, h: 16 }, '#c79a6a', 2); UI.rect(x - 3, y, 6, 16, '#e0b988'); }
   function drawHero(ctx, now) {
     const art = Cutscene.art, a = hero, f = Math.floor(now * 8) % 2;
     const working = !!a.anim && !a.moving;
-    const rows = a.moving ? art.ME_WALK[Math.floor(now * 9) % 4] : (working ? art.ME_BACK : art.ME_FRONT);
+    const pose = working ? standing(a, a.face) : { who: a, rows: a.moving ? art.ME_WALK[Math.floor(now * 9) % 4] : art.ME_FRONT };
+    const rows = pose.rows;
     const bend = working && (a.anim === 'sweep' || a.anim === 'dump') ? f * 4 : 0;
-    const top = person(ctx, Object.assign({}, a, { y: a.y + bend }), art.ME_PAL, rows, now);
+    const top = person(ctx, Object.assign({}, pose.who, { y: a.y + bend }), art.ME_PAL, rows, now);
     if (a.carry === 'box') box(a.x, top - 14);
     if (a.carry === 'trash') { UI.framed({ x: a.x + (a.left ? -22 : 8), y: a.y - 20, w: 14, h: 12 }, '#44505c', 2); UI.rect(a.x + (a.left ? -18 : 12), a.y - 24, 6, 4, '#44505c'); }
     if (working) {

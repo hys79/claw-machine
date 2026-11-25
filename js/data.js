@@ -267,7 +267,7 @@ DATA.CUSTOMERS = [
 DATA.EQUIPMENT = {
   smallbin: { name: '쓰레기통', rank: 1, price: 30000, desc: '놓을수록 청소할 일이 줄어든다.' },
   bin: { name: '대형 쓰레기통', rank: 1, price: 150000, desc: '기본 쓰레기통의 두 배를 담는다.' },
-  exchanger: { name: '자동환전기', rank: 2, price: 600000, desc: '환전 요청이 크게 준다.' },
+  exchanger: { name: '자동환전기', rank: 2, price: 600000, desc: '가게에 놓으면 환전 요청이 크게 준다.' },
   globalpay: { name: '해외결제 시스템', rank: 3, price: 500000, desc: 'K-pop 팬의 환전 요청이 없어지고, K-pop 팬이 더 온다.' },
   robot: { name: '로봇 청소기', rank: 4, price: 1200000, desc: '청소할 일이 대부분 없어진다.' },
   capacity: { name: '대용량 진열 개조', rank: 4, price: 300000, perMachine: true, desc: '진열 칸이 1.5배(타이머 기계 제외).' },

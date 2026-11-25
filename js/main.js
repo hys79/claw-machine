@@ -188,6 +188,8 @@
   // Esc: 팝업 닫기 → (타이틀·컷신에서는) 설정 열기 → 그 밖에는 이전 화면
   window.addEventListener('keydown', (e) => {
     Sound.unlock();
+    if (e.key === 'F2') { e.preventDefault(); if (screen === 'shop' && !modal) Game.toggleDev(); return; } // 개발자 모드
+    if (e.code === 'KeyR' && !e.ctrlKey && !e.metaKey && e.target !== input && screen === 'shop' && !modal) { Game.rotate(); return; }
     if (e.key === 'Escape') {
       Sound.sfx('back');
       if (modal) closeModal();

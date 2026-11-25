@@ -1,6 +1,6 @@
 // 가게 바닥 그리기(3/4 탑다운)와 배치 규칙. 계산(돈·손님)은 하지 않는다. 좌표는 가운데 960 영역 기준.
-// 놓는 것(thing): 기계 / 설비(환전대·쓰레기통·로봇 청소기) / 소품(바닥·벽). 위치 pos = {x, y} 격자 칸, 벽은 y = -1.
-// 기계는 바로 아래 칸이 손님이 서는 자리다. 벽 오른쪽 끝 칸에는 창고 문이 있다.
+// 놓는 것(thing): 기계 / 설비(쓰레기통·자동환전기·로봇 청소기) / 소품(바닥·벽). 위치 pos = {x, y} 격자 칸, 벽은 y = -1.
+// 회전 rot = 0~3(앞면이 아래·왼쪽·위·오른쪽). 기계는 앞면 쪽 칸이 손님이 서는 자리다. 벽 오른쪽 끝 칸에는 창고 문이 있다.
 const ShopView = (function () {
   const C = CFG.COLOR;
   const CW = 56, CH = 60;                                  // 격자 한 칸
@@ -19,22 +19,36 @@ const ShopView = (function () {
   }
 
   // ---------- 놓는 것 목록 ----------
-  const FIX_NAME = { exchange: '환전대', robot: '로봇 청소기' };
   const machineThing = (m) => ({ key: 'm' + m.id, kind: 'machine', ref: m, holder: m, w: DATA.MACHINES[m.type].footprint });
   const binThing = (b) => ({ key: 'b' + b.uid, kind: 'bin', ref: b, holder: b, w: 1 });
   const decorThing = (o) => { const d = Sim.decorDef(o.id); return d && { key: 'd' + o.uid, kind: 'decor', ref: o, holder: o, w: d.width, wall: !!d.wall, def: d }; };
   const fixThing = (st, k) => ({ key: 'f' + k, kind: 'fix', ref: k, holder: st.fix[k], w: 1 });
-  // 모든 설치물(설치한 것 + 창고에 넣은 것). 환전대는 가게에 붙박이다.
+  // 모든 설치물(설치한 것 + 창고에 넣은 것)
   function everything(st) {
     st.fix = st.fix || {};
-    const fix = ['exchange'].concat(st.equip.robot ? ['robot'] : []);
+    const fix = ['exchanger', 'robot'].filter((k) => st.equip[k]);
     fix.forEach((k) => { st.fix[k] = st.fix[k] || { pos: null }; });
     return st.machines.map(machineThing).concat(st.bins.map(binThing), fix.map((k) => fixThing(st, k)), st.decors.map(decorThing).filter(Boolean));
   }
   const stored = (st) => everything(st).filter((t) => t.holder.stored);
   function things(st) { return everything(st).filter((t) => !t.holder.stored); }
   // ---------- 배치 규칙 ----------
-  const cells = (t, p) => Array.from({ length: t.w }, (_, i) => ({ x: p.x + i, y: p.y }));
+  // 회전: 기계와 바닥 소품만. 옆으로 돌리면 가로 칸이 세로 칸이 된다.
+  const canRotate = (t) => !t.wall && (t.kind === 'machine' || t.kind === 'decor');
+  const rotOf = (t) => (canRotate(t) ? (t.holder.rot || 0) : 0);
+  const dims = (t) => (rotOf(t) % 2 ? { w: 1, h: t.w } : { w: t.w, h: 1 });
+  function cells(t, p) {
+    const d = dims(t), out = [];
+    for (let y = 0; y < d.h; y++) for (let x = 0; x < d.w; x++) out.push({ x: p.x + x, y: p.y + y });
+    return out;
+  }
+  // 기계 앞면에 닿는 칸들(손님이 서는 자리)
+  function frontOf(t, p) {
+    p = p || t.holder.pos;
+    const d = dims(t), r = rotOf(t), n = r % 2 ? d.h : d.w;
+    return Array.from({ length: n }, (_, i) => (r === 0 ? { x: p.x + i, y: p.y + d.h } : r === 2 ? { x: p.x + i, y: p.y - 1 }
+      : r === 1 ? { x: p.x - 1, y: p.y + i } : { x: p.x + d.w, y: p.y + i }));
+  }
   const k = (x, y) => x + ',' + y;
   // others(이미 놓인 것)와 함께 (x, y)에 놓을 수 있는지
   function fits(st, t, x, y, others) {
@@ -43,19 +57,19 @@ const ShopView = (function () {
       if (y !== -1 || x < 0 || x + t.w > g.cols - 1) return false;
       return others.every((o) => !o.wall || !o.holder.pos || x + t.w <= o.holder.pos.x || o.holder.pos.x + o.w <= x);
     }
-    const maxY = t.kind === 'machine' ? g.rows - 2 : g.rows - 1;
-    if (x < 0 || y < 0 || x + t.w > g.cols || y > maxY) return false;
+    const d = dims(t);
+    if (x < 0 || y < 0 || x + d.w > g.cols || y + d.h > g.rows) return false;
     const solid = new Set(), front = new Set();
-    const add = (o, p) => cells(o, p).forEach((c) => { solid.add(k(c.x, c.y)); if (o.kind === 'machine') front.add(k(c.x, c.y + 1)); });
+    const add = (o, p) => { cells(o, p).forEach((c) => solid.add(k(c.x, c.y))); if (o.kind === 'machine') frontOf(o, p).forEach((c) => front.add(k(c.x, c.y))); };
     others.forEach((o) => { if (!o.wall && o.holder.pos) add(o, o.holder.pos); });
     const door = k(g.door.x, g.door.y);
-    for (const c of cells(t, { x, y })) {
-      if (solid.has(k(c.x, c.y)) || front.has(k(c.x, c.y)) || k(c.x, c.y) === door) return false;
-      if (t.kind === 'machine' && (solid.has(k(c.x, c.y + 1)) || k(c.x, c.y + 1) === door)) return false;
+    for (const c of cells(t, { x, y })) if (solid.has(k(c.x, c.y)) || front.has(k(c.x, c.y)) || k(c.x, c.y) === door) return false;
+    if (t.kind === 'machine') for (const c of frontOf(t, { x, y })) {
+      if (c.x < 0 || c.y < 0 || c.x >= g.cols || c.y >= g.rows || solid.has(k(c.x, c.y)) || k(c.x, c.y) === door) return false;
     }
     add(t, { x, y });
     if (solid.has(door)) return false;
-    // 입구에서 모든 기계 앞과 환전대·쓰레기통까지 걸어갈 수 있어야 한다
+    // 입구에서 모든 기계 앞과 쓰레기통까지 걸어갈 수 있어야 한다
     const seen = new Set([door]), queue = [[g.door.x, g.door.y]];
     while (queue.length) {
       const [cx, cy] = queue.pop();
@@ -67,7 +81,7 @@ const ShopView = (function () {
     }
     if ([...front].some((f) => !seen.has(f))) return false;
     return others.concat([Object.assign({}, t, { holder: { pos: { x, y } } })]).every((o) => {
-      if ((o.kind !== 'fix' && o.kind !== 'bin') || o.ref === 'robot' || !o.holder.pos) return true;
+      if (o.kind !== 'bin' || !o.holder.pos) return true;
       const p = o.holder.pos;
       return [[1, 0], [-1, 0], [0, 1], [0, -1]].some(([dx, dy]) => seen.has(k(p.x + dx, p.y + dy)));
     });
@@ -96,13 +110,16 @@ const ShopView = (function () {
   // ---------- 화면 좌표 ----------
   function rectOf(g, t, pos) {
     pos = pos || t.holder.pos;
-    const x = g.x + pos.x * CW, y = g.y + pos.y * CH;
+    const x = g.x + pos.x * CW, y = g.y + pos.y * CH, d = dims(t);
     if (t.wall) return { x: x + 4, y: g.y - 56, w: t.w * CW - 8, h: 30 };
-    if (t.kind === 'machine') return { x: x + 3, y: y - 26, w: t.w * CW - 6, h: CH + 22 };
+    if (t.kind === 'machine') return { x: x + 3, y: y - 26, w: d.w * CW - 6, h: d.h * CH + 22 };
     if (t.kind === 'fix' || t.kind === 'bin') return { x: x + 8, y: y + 4, w: CW - 16, h: CH - 12 };
-    return { x: x + 4, y: y - 12, w: t.w * CW - 8, h: CH + 6 };
+    return { x: x + 4, y: y - 12, w: d.w * CW - 8, h: d.h * CH + 6 };
   }
-  const standPoint = (g, m) => ({ x: g.x + (m.pos.x + DATA.MACHINES[m.type].footprint / 2) * CW, y: g.y + (m.pos.y + 2) * CH - 10 });
+  function standPoint(g, m) { // 기계 앞에 서는 발 위치
+    const f = frontOf(machineThing(m)), c = f[Math.floor((f.length - 1) / 2)];
+    return { x: g.x + (c.x + 0.5) * CW, y: g.y + (c.y + 1) * CH - 10 };
+  }
   const doorPoint = (g) => ({ x: g.x + (g.door.x + 0.5) * CW, y: g.y + g.h - 4 });
 
   // ---------- 그리기 ----------
@@ -137,33 +154,57 @@ const ShopView = (function () {
     UI.rect(x + 2 * s, y + 3 * s, s, s, C.ink); UI.rect(x + 4 * s, y + 3 * s, s, s, C.ink);
   }
 
-  // 기계 하나. o: {down}
+  // 유리 안의 인형(많을수록 많이 보인다)
+  function inside(m, glass, rows) {
+    const items = [];
+    Object.keys(m.load).forEach((id) => { for (let i = 0; i < m.load[id].qty; i++) items.push(Sim.info.doll(id)); });
+    if (DATA.MACHINES[m.type].kind === 'timer') {
+      const s = glass.w < 34 ? 3 : 4;
+      if (items.length) dollIcon(glass.x + glass.w / 2 - 3.5 * s, glass.y + glass.h - 7 * s - 1, items[0], s);
+    } else {
+      const per = Math.max(1, Math.floor((glass.w - 2) / 11)), show = Math.min(items.length, per * rows);
+      for (let i = 0; i < show; i++) {
+        const d = items[Math.floor(i * items.length / show)], row = Math.floor(i / per);
+        dollIcon(glass.x + 2 + (i % per) * 11 + (per > 1 ? (row % 2) * 3 : 0), glass.y + glass.h - 12 - row * 9, d, d.size === 'L' && per > 1 ? 2 : 1.5);
+      }
+      UI.rect(glass.x + glass.w / 2 - 1, glass.y, 2, 8, '#44505c'); UI.rect(glass.x + glass.w / 2 - 4, glass.y + 8, 8, 3, '#44505c'); // 집게
+    }
+    return items.length;
+  }
+  // 기계 하나. o: {down}. 회전 0 앞 / 1 왼쪽 / 2 뒤 / 3 오른쪽
   function machine(m, r, o) {
-    const def = DATA.MACHINES[m.type], col = CABINET[m.type];
+    const def = DATA.MACHINES[m.type], col = CABINET[m.type], rot = m.rot || 0, timer = def.kind === 'timer';
     const x = r.x, y = r.y, w = r.w, h = r.h;
     UI.rect(x + 4, y + h - 4, w, 8, 'rgba(20,50,77,0.25)');
     UI.framed({ x, y, w, h }, col[0], 2);
     UI.rect(x, y, w, 14, '#ffffff'); UI.rect(x + 3, y + 3, w - 6, 8, col[0]); // 윗면
-    const glass = { x: x + 5, y: y + 18, w: w - 10, h: h - 38 };
-    UI.framed(glass, o.down ? '#8b98a5' : '#d8f1ff', 2);
-    // 안의 인형(많을수록 많이 보인다)
-    const items = [];
-    Object.keys(m.load).forEach((id) => { for (let i = 0; i < m.load[id].qty; i++) items.push(Sim.info.doll(id)); });
-    if (def.kind === 'timer') {
-      if (items.length) dollIcon(glass.x + glass.w / 2 - 14, glass.y + glass.h - 29, items[0], 4);
-      UI.text('10.00', x + w / 2, glass.y + 8, 14, C.alert);
-    } else {
-      const per = Math.max(1, Math.floor((glass.w - 2) / 11));
-      const show = Math.min(items.length, per * 3);
-      for (let i = 0; i < show; i++) {
-        const d = items[Math.floor(i * items.length / show)], row = Math.floor(i / per);
-        dollIcon(glass.x + 2 + (i % per) * 11 + (row % 2) * 3, glass.y + glass.h - 12 - row * 9, d, d.size === 'L' ? 2 : 1.5);
-      }
-      UI.rect(glass.x + glass.w / 2 - 1, glass.y, 2, 8, '#44505c'); UI.rect(glass.x + glass.w / 2 - 4, glass.y + 8, 8, 3, '#44505c'); // 집게
+    const glassColor = o.down ? '#8b98a5' : '#d8f1ff';
+    let count;
+    if (rot === 0) {
+      const glass = { x: x + 5, y: y + 18, w: w - 10, h: h - 38 };
+      UI.framed(glass, glassColor, 2);
+      count = inside(m, glass, 3);
+      if (timer) UI.text('10.00', x + w / 2, glass.y + 8, 14, C.alert);
+      UI.rect(x, y + h - 16, w, 16, col[1]);
+      UI.rect(x + w / 2 - 8, y + h - 11, 5, 5, '#ffd84a'); UI.rect(x + w / 2 + 3, y + h - 11, 5, 5, '#d9455f');
+    } else if (rot === 2) { // 뒷모습: 위쪽 작은 창과 뒷판(통풍구, 전선)
+      const glass = { x: x + 8, y: y + 18, w: w - 16, h: 24 };
+      UI.framed(glass, glassColor, 2);
+      count = inside(m, glass, 1);
+      UI.rect(x, y + 46, w, h - 46, col[1]);
+      for (let i = 0; i < 3; i++) UI.rect(x + 10, y + 52 + i * 7, w - 20, 3, col[0]);
+      UI.rect(x + w - 12, y + h - 8, 6, 8, C.ink);
+    } else { // 옆모습: 앞면 쪽으로 조작대가 튀어나온다
+      const left = rot === 1, glass = { x: x + (left ? 14 : 5), y: y + 18, w: w - 19, h: h - 36 };
+      UI.framed(glass, glassColor, 2);
+      count = inside(m, glass, Math.max(3, Math.floor((glass.h - 20) / 9)));
+      UI.rect(x, y + h - 14, w, 14, col[1]);
+      const sx = left ? x - 5 : x + w - 8;
+      UI.framed({ x: sx, y: y + h - 44, w: 13, h: 28 }, col[1], 2);
+      UI.rect(sx + 4, y + h - 38, 5, 5, '#ffd84a'); UI.rect(sx + 4, y + h - 27, 5, 5, '#d9455f');
+      if (timer) UI.text('10', glass.x + glass.w / 2, glass.y + 8, 14, C.alert);
     }
-    if (!items.length) UI.text('비었음', x + w / 2, glass.y + glass.h / 2, 14, C.alert);
-    UI.rect(x, y + h - 16, w, 16, col[1]);
-    UI.rect(x + w / 2 - 8, y + h - 11, 5, 5, '#ffd84a'); UI.rect(x + w / 2 + 3, y + h - 11, 5, 5, '#d9455f');
+    if (!count) UI.text(w < 56 ? '빔' : '비었음', x + w / 2, y + (rot === 2 ? 30 : h / 2 - 6), 14, C.alert);
     if (m.mods.durable) UI.rect(x + 3, y + h - 12, 6, 6, '#ffffff');
   }
 
@@ -176,12 +217,11 @@ const ShopView = (function () {
   }
   function fixture(st, key, r) {
     const { x, y, w, h } = r;
-    if (key === 'exchange') {
-      const auto = !!st.equip.exchanger;
-      UI.framed(r, auto ? '#2aa198' : '#c79a6a', 2);
-      UI.rect(x, y, w, 10, auto ? '#4cc4ba' : '#e0b988');
-      if (auto) UI.rect(x + 8, y + 14, w - 16, 10, '#14324d');
-      UI.coin(x + w / 2 - 8, y + h - 20, 2);
+    if (key === 'exchanger') {
+      UI.framed({ x: x + 4, y: y + 2, w: w - 8, h: h - 4 }, '#2aa198', 2);
+      UI.rect(x + 4, y + 2, w - 8, 10, '#4cc4ba');
+      UI.rect(x + 10, y + 18, w - 20, 8, C.ink);
+      UI.coin(x + w / 2 - 8, y + h - 22, 2);
     } else {
       UI.framed({ x: x + 4, y: y + h - 22, w: w - 8, h: 16 }, '#e4eff8', 2);
       UI.rect(x + w / 2 - 3, y + h - 18, 6, 6, '#2f80d0');
@@ -205,11 +245,54 @@ const ShopView = (function () {
     ledboard: (r, cx) => { UI.framed(r, '#14324d', 3); for (let i = 0; i < Math.floor(r.w / 12) - 1; i++) UI.rect(r.x + 8 + i * 12, r.y + 3, 5, 3, ['#ffd84a', '#7ccf6a', '#ff9fbc'][i % 3]); UI.text('ARENA LIVE', cx, r.y + r.h / 2 + 3, 14, '#6ab0f0'); },
     goldframe: (r) => { UI.framed({ x: r.x + 10, y: r.y, w: r.w - 20, h: r.h - 2 }, '#ffd84a', 2); UI.rect(r.x + 15, r.y + 5, r.w - 30, r.h - 12, '#d8f1ff'); },
   };
-  function decor(id, r) {
+  // 인형 조형물(마스코트·황금상)의 방향: 뒤를 보면 얼굴이 없고, 옆이면 눈이 한쪽
+  function figure(x, y, s, color, rot) {
+    dollIcon(x, y, { taste: [color] }, s);
+    if (!rot) return;
+    const body = TASTE_COLOR[color];
+    UI.rect(x + 2 * s, y + 3 * s, 3 * s, s, body);
+    if (rot !== 2) UI.rect(x + (rot === 1 ? 1 : 5) * s, y + 3 * s, s, s, C.ink);
+  }
+  // 옆·뒤로 돌린 모양(없는 것은 좌우를 뒤집어 그린다)
+  const TURNED = {
+    bench: (r, cx, b, rot) => {
+      if (rot === 2) { UI.framed({ x: r.x + 4, y: b - 30, w: r.w - 8, h: 10 }, '#e0b988', 2); UI.framed({ x: r.x + 6, y: b - 18, w: r.w - 12, h: 14 }, '#c79a6a', 2); return; }
+      const back = rot === 1 ? r.x + r.w - 16 : r.x + 6;
+      UI.framed({ x: r.x + 10, y: r.y + 20, w: r.w - 20, h: r.h - 30 }, '#e0b988', 2);
+      UI.framed({ x: back, y: r.y + 8, w: 10, h: r.h - 24 }, '#c79a6a', 2);
+      UI.rect(r.x + 12, b - 8, 6, 8, C.ink); UI.rect(r.x + r.w - 18, b - 8, 6, 8, C.ink);
+    },
+    photozone: (r, cx, b, rot) => {
+      if (rot === 2) { UI.framed({ x: r.x + 6, y: r.y + 4, w: r.w - 12, h: r.h - 12 }, '#d9a8b8', 3); UI.rect(cx - 2, r.y + 8, 4, r.h - 20, '#b8869a'); return; }
+      const board = rot === 1 ? r.x + r.w - 18 : r.x + 6;
+      UI.framed({ x: board, y: r.y + 4, w: 12, h: r.h - 12 }, '#ffd6e4', 3);
+      figure(cx - 14, b - 40, 4, '귀여움', rot);
+    },
+    aquarium: (r, cx, b, rot) => {
+      if (rot === 2) { UI.mirror(cx, () => ART.aquarium(r, cx, b)); return; }
+      UI.framed({ x: r.x + 10, y: r.y + 10, w: r.w - 20, h: r.h - 22 }, '#5cc0e8', 2);
+      UI.rect(r.x + 8, b - 10, r.w - 16, 10, C.ink);
+      [[18, 26, '#ffb347'], [14, 50, '#ff9fbc'], [22, 74, '#ffd84a']].forEach((f) => { UI.rect(r.x + f[0], r.y + f[1], 10, 6, f[2]); UI.rect(r.x + f[0] + (rot === 1 ? 10 : -4), r.y + f[1] + 1, 4, 4, f[2]); });
+    },
+    mascot: (r, cx, b, rot) => { UI.framed({ x: r.x + 6, y: b - 10, w: r.w - 12, h: 8 }, '#7d8b99', 2); figure(cx - (rot % 2 ? 21 : 28), b - (rot % 2 ? 52 : 66), rot % 2 ? 6 : 8, '아이돌', rot); },
+    goldstatue: (r, cx, b, rot) => { UI.framed({ x: r.x + 6, y: b - 16, w: r.w - 12, h: 14 }, '#8a5a1a', 2); figure(cx - (rot % 2 ? 21 : 25), b - (rot % 2 ? 58 : 66), rot % 2 ? 6 : 7, '희귀', rot); },
+    arcadeset: (r, cx, b, rot) => {
+      if (rot === 2) { UI.framed({ x: cx - 17, y: b - 52, w: 34, h: 50 }, '#a52c43', 2); for (let i = 0; i < 3; i++) UI.rect(cx - 10, b - 40 + i * 8, 20, 3, '#d9455f'); return; }
+      const side = rot === 1 ? -1 : 1;
+      UI.framed({ x: cx - 12, y: b - 52, w: 24, h: 50 }, '#d9455f', 2);
+      UI.framed({ x: cx + side * 12 - 5, y: b - 46, w: 10, h: 18 }, '#14324d', 2);
+      UI.rect(cx + side * 14 - 4, b - 22, 8, 6, '#ffd84a');
+    },
+    trophy: (r, cx, b, rot) => { if (rot === 2) ART.trophy(r, cx, b); else UI.mirror(cx, () => ART.trophy(r, cx, b)); },
+  };
+  function decor(id, r, rot) {
     const draw = ART[id], cx = r.x + r.w / 2, b = r.y + r.h - 2;
     const wall = Sim.decorDef(id).wall;
     if (!wall) UI.rect(r.x + 6, b - 2, r.w - 8, 6, 'rgba(20,50,77,0.2)');
-    if (draw) draw(r, cx, b); else UI.framed({ x: r.x + 6, y: r.y + 10, w: r.w - 12, h: r.h - 16 }, '#c9d9e6', 2);
+    if (rot && TURNED[id]) TURNED[id](r, cx, b, rot);
+    else if (rot && draw) UI.mirror(cx, () => draw(r, cx, b));
+    else if (draw) draw(r, cx, b);
+    else UI.framed({ x: r.x + 6, y: r.y + 10, w: r.w - 12, h: r.h - 16 }, '#c9d9e6', 2);
   }
 
   // 놓는 것 하나를 r에 그린다. o: {selected, down, ghost('ok'|'no')}
@@ -218,13 +301,13 @@ const ShopView = (function () {
     if (t.kind === 'machine') machine(t.ref, r, o);
     else if (t.kind === 'fix') fixture(st, t.ref, r);
     else if (t.kind === 'bin') bin(t.ref.big, r);
-    else decor(t.ref.id, r);
+    else decor(t.ref.id, r, rotOf(t));
     const x = r.x, y = r.y, w = r.w, h = r.h;
     if (o.selected) [[x - 5, y - 5, w + 10, 3], [x - 5, y + h + 2, w + 10, 3], [x - 5, y - 5, 3, h + 10], [x + w + 2, y - 5, 3, h + 10]].forEach((a) => UI.rect(a[0], a[1], a[2], a[3], '#ffb300'));
     if (o.ghost) UI.rect(x - 2, y - 2, w + 4, h + 4, o.ghost === 'ok' ? 'rgba(60,200,110,0.35)' : 'rgba(217,69,95,0.45)');
   }
   // 앞뒤 순서: 아래 줄에 있는 것이 앞
-  const depth = (g, t) => (t.wall ? -1000 : g.y + (t.holder.pos.y + 1) * CH);
+  const depth = (g, t) => (t.wall ? -1000 : g.y + (t.holder.pos.y + dims(t).h) * CH);
 
-  return { CW, CH, FIX_NAME, geom, things, stored, canPlace, autoPlace, rectOf, depth, standPoint, doorPoint, room, thing, dollIcon, TASTE_COLOR };
+  return { CW, CH, geom, canRotate, rotOf, dims, cells, frontOf, machineThing, things, stored, canPlace, autoPlace, rectOf, depth, standPoint, doorPoint, room, thing, dollIcon, TASTE_COLOR };
 })();
