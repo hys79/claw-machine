@@ -47,6 +47,11 @@ const Scene = (function () {
   }
   const pathCx = (y) => 120 + 8 * Math.sin((y - 102) * 0.09);
   const pathHalf = (y) => 10 + (y - 102) * 0.9;
+  // 땅이 시작되는 높이. 아레나 밑동(y 84~94)이 땅 안에 들어오도록 건물보다 위에 둔다.
+  const HZ = 82;
+  // 강의 양쪽 기슭. 나무·덤불·꽃은 이 사이에 두지 않는다.
+  const riverL = (y) => 196 + (y - HZ) * 0.4;
+  const riverR = (y) => riverL(y) + 8 + (y - HZ) * 0.35;
 
   // ---------- 하늘 + 햇살 ----------
   function drawSky(ctx) {
@@ -91,11 +96,12 @@ const Scene = (function () {
     const CX = 120, TY = 44, RX = 56, RY = 10, BODY = 40;
     const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 
-    // 바닥 테라스(계단 3단)
-    ellipse(CX, 88, 68, 15, P.terraceEdge);
-    ellipse(CX, 87, 66, 13, P.terraceA);
-    ellipse(CX, 87, 62, 11, P.terraceB);
-    ellipse(CX, 86, 60, 10, P.terraceA);
+    // 땅에 깔린 광장(평평한 포장 바닥)과 건물이 땅에 드리우는 그림자
+    ellipse(CX, 92, 71, 12, P.lawnDark);
+    ellipse(CX, 92, 70, 11, P.pathEdge);
+    ellipse(CX, 92, 68, 10, P.path);
+    for (let i = 0; i < 60; i++) R(CX - 60 + Math.floor(rnd() * 120), 88 + Math.floor(rnd() * 13), 2, 1, P.pathLight);
+    ellipse(CX + 3, TY + BODY + 2, RX + 5, RY + 1, 'rgba(45,74,102,0.28)');
 
     // 지붕: 콘크리트 테두리 + 잔디 링 + 가운데 천창
     ellipse(CX, TY, RX + 1, RY + 1, P.outline);
@@ -177,11 +183,23 @@ const Scene = (function () {
       R(st[0], st[2] + 1, st[1], 1, P.concreteDark);
     });
 
-    // 양옆 깃발 기둥
-    [[CX - 40, 88], [CX + 40, 88]].forEach((f, i) => {
-      R(f[0], f[1] - 16, 1, 17, P.outline);
-      R(f[0] + 1, f[1] - 16, 7, 4, i ? '#4aa3f0' : '#ffd84a');
-      R(f[0] + 1, f[1] - 12, 7, 1, P.outline);
+    // 밑동 화단: 외벽이 땅과 만나는 선을 따라 낮은 덤불을 심는다(정문 앞은 비운다)
+    for (let dx = 34; dx <= RX; dx += 5) {
+      [-1, 1].forEach((side) => {
+        const x = CX + side * dx;
+        const y = TY + BODY + Math.round(RY * Math.sqrt(Math.max(0, 1 - (dx * dx) / (RX * RX))));
+        ellipse(x, y + 1, 3, 2, P.treeDark);
+        ellipse(x, y, 2, 1, P.tree);
+        R(x - 1, y - 1, 1, 1, P.treeLight);
+      });
+    }
+
+    // 양옆 깃발 기둥(광장 바닥에 세운다)
+    [[CX - 63, 95], [CX + 63, 95]].forEach((f, i) => {
+      R(f[0] - 1, f[1], 3, 1, P.concreteDark);
+      R(f[0], f[1] - 18, 1, 18, P.outline);
+      R(f[0] + 1, f[1] - 18, 7, 4, i ? '#4aa3f0' : '#ffd84a');
+      R(f[0] + 1, f[1] - 14, 7, 1, P.outline);
     });
   }
 
@@ -230,7 +248,7 @@ const Scene = (function () {
     R(118, 10, 1, 30, '#44505c');
     R(116, 40, 5, 3, '#ffd84a'); R(116, 43, 5, 1, '#44505c');
     // 울타리(파랑·흰 패널) + 공사 안내 줄무늬
-    for (let x = 22; x < 218; x += 8) {
+    for (let x = 22; x < 190; x += 8) {
       R(x, 95, 8, 11, '#4a90d9'); R(x, 95, 8, 1, '#ffffff'); R(x, 105, 8, 1, '#2f5f9f');
       R(x + 7, 94, 1, 13, '#2d4a66');
     }
@@ -252,18 +270,18 @@ const Scene = (function () {
 
     // 먼 산 두 겹
     for (let x = -EXT; x < GW + EXT; x++) {
-      const t1 = Math.round(70 - (12 * Math.sin(x * 0.045 + 0.6) + 8 * Math.sin(x * 0.11 + 2) + ((x < 55 || x > 185) ? 7 : 0)));
-      R(x, t1, 1, 96 - t1, P.mtnBack);
-      const t2 = Math.round(82 - (7 * Math.sin(x * 0.07 + 1) + 5 * Math.sin(x * 0.16)));
-      R(x, t2, 1, 96 - t2, P.mtnFront);
+      const t1 = Math.round(60 - (12 * Math.sin(x * 0.045 + 0.6) + 8 * Math.sin(x * 0.11 + 2) + ((x < 55 || x > 185) ? 7 : 0)));
+      R(x, t1, 1, HZ + 3 - t1, P.mtnBack);
+      const t2 = Math.round(70 - (7 * Math.sin(x * 0.07 + 1) + 5 * Math.sin(x * 0.16)));
+      R(x, t2, 1, HZ + 3 - t2, P.mtnFront);
     }
     // 뒤쪽 아파트 단지
     for (let x = -EXT - 2; x < GW + EXT;) {
       const w = 8 + Math.floor(rnd() * 5), h = 16 + Math.floor(rnd() * 18);
       const col = [P.aptA, P.aptB, P.aptC][Math.floor(rnd() * 3)];
-      R(x, 96 - h, w, h, col);
-      R(x + w - 2, 96 - h, 2, h, 'rgba(40,70,100,0.12)');
-      for (let wy = 96 - h + 3; wy < 93; wy += 3)
+      R(x, HZ + 2 - h, w, h, col);
+      R(x + w - 2, HZ + 2 - h, 2, h, 'rgba(40,70,100,0.12)');
+      for (let wy = HZ + 5 - h; wy < HZ - 1; wy += 3)
         for (let wx = x + 1; wx < x + w - 2; wx += 3)
           R(wx, wy, 1, 1, rnd() < 0.12 ? P.aptWarm : P.aptWin);
       x += w + 1;
@@ -271,19 +289,20 @@ const Scene = (function () {
 
     // 잔디(완만한 언덕 + 점 무늬)
     for (let x = -EXT; x < GW + EXT; x++) {
-      const top = Math.round(95 + 1.6 * Math.sin(x * 0.07));
+      const top = Math.round(HZ + 1.6 * Math.sin(x * 0.07));
       for (let y = top; y < GH; y++) R(x, y, 1, 1, y < 112 ? P.lawnA : (y < 130 ? P.lawnB : P.lawnC));
     }
-    for (let i = 0; i < 380; i++) {
-      const x = -EXT + Math.floor(rnd() * LW), y = 98 + Math.floor(rnd() * 46);
+    for (let i = 0; i < 480; i++) {
+      const x = -EXT + Math.floor(rnd() * LW), y = HZ + 3 + Math.floor(rnd() * (GH - HZ - 3));
       R(x, y, 1, 1, rnd() < 0.6 ? P.lawnLight : P.lawnDark);
     }
     // 강(오른쪽)
-    for (let y = 97; y < GH; y++) {
-      const x0 = Math.round(192 + (y - 97) * 0.5);
-      R(x0, y, GW + EXT - x0, 1, P.river);
+    for (let y = HZ + 2; y < GH; y++) {
+      const x0 = Math.round(riverL(y)), x1 = Math.round(riverR(y));
+      R(x0, y, x1 - x0, 1, P.river);
       R(x0, y, 1, 1, P.riverEdge);
-      if (rnd() < 0.5) R(x0 + 3 + Math.floor(rnd() * (GW + EXT - x0 - 4)), y, 2, 1, '#d5f0fc');
+      R(x1 - 1, y, 1, 1, P.riverEdge);
+      if (rnd() < 0.5) R(x0 + 2 + Math.floor(rnd() * Math.max(1, x1 - x0 - 5)), y, 2, 1, '#d5f0fc');
     }
 
     g.save();
@@ -314,7 +333,7 @@ const Scene = (function () {
     }
 
     // 나무들
-    [[-46, 108, 7], [-24, 102, 6], [-8, 116, 5], [14, 106, 7], [32, 114, 6], [58, 104, 6], [78, 110, 4], [172, 108, 5], [194, 104, 7], [214, 100, 6], [228, 112, 8]].forEach((t) => {
+    [[-46, 108, 7], [-24, 102, 6], [-8, 116, 5], [14, 106, 7], [32, 114, 6], [58, 104, 6], [78, 110, 4], [172, 108, 5], [188, 99, 6], [196, 121, 7], [231, 97, 6], [247, 112, 7], [274, 105, 7]].forEach((t) => {
       R(t[0] - 1, t[1] + t[2] - 2, 2, 5, P.trunk);
       circle(t[0], t[1], t[2] + 1, P.treeDark);
       circle(t[0], t[1], t[2], P.tree);
@@ -339,7 +358,7 @@ const Scene = (function () {
     }
 
     // 앞쪽 덤불
-    [[4, 140, 9], [236, 142, 10], [60, 148, 8], [180, 148, 8]].forEach((b) => {
+    [[4, 140, 9], [264, 142, 10], [60, 148, 8], [180, 148, 8]].forEach((b) => {
       circle(b[0], b[1], b[2], P.lawnDark);
       circle(b[0] - 1, b[1] - 1, b[2] - 2, P.tree);
       circle(b[0] - 3, b[1] - 3, Math.max(2, Math.round(b[2] / 3)), P.treeLight);
@@ -350,7 +369,7 @@ const Scene = (function () {
     for (let i = 0; i < 70; i++) {
       const x = -EXT + Math.floor(rnd() * LW), y = 112 + Math.floor(rnd() * 32);
       if (Math.abs(x - pathCx(y)) < pathHalf(y) + 1) continue;
-      if (x > 192 + (y - 97) * 0.5 - 1) continue;
+      if (x > riverL(y) - 2 && x < riverR(y) + 1) continue;
       R(x, y, 1, 1, fl[Math.floor(rnd() * fl.length)]);
     }
   }
