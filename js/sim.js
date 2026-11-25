@@ -121,6 +121,13 @@ const Sim = (function () {
       st.env = null;
     }
     if (st.lastMissed) st.lastMissed = st.lastMissed.filter((t) => DATA.TASTES.indexOf(t) >= 0);
+    st.machines.forEach((m) => {
+      const ids = loadedIds(m).sort((a, b) => m.load[b].qty - m.load[a].qty);
+      if (ids.length <= 1 && Object.keys(m.plan).length <= 1) return;
+      ids.slice(1).forEach((id) => { addStock(st, id, m.load[id].qty, m.load[id].cost); delete m.load[id]; });
+      const keep = ids[0] || Object.keys(m.plan).sort((a, b) => m.plan[b] - m.plan[a])[0];
+      m.plan = keep ? { [keep]: capacityOf(m, keep) } : {};
+    });
     return st;
   }
 
@@ -205,11 +212,26 @@ const Sim = (function () {
     st.money += gain;
     return { ok: true, gain, qty: n };
   }
-  const canRefill = (st, m) => Object.keys(st.stock).some((id) => {
-    const d = doll(id);
-    if (!canHold(m, d) || mdef(m).slotCost[d.size] > freeSlots(m)) return false;
-    return !m.manual || Object.keys(m.plan).some((p) => p === id || similar(doll(p), d));
-  });
+  // ---------- 진열 규칙: 기계 하나에는 한 종류의 인형만 ----------
+  const planned = (m) => Object.keys(m.plan)[0] || null;                         // 이 기계에 넣기로 한 인형
+  const capacityOf = (m, id) => Math.floor(slotsOf(m) / mdef(m).slotCost[doll(id).size]); // 가득 채웠을 때의 수
+  const fitsIn = (m, id) => canHold(m, doll(id)) && capacityOf(m, id) > 0;
+  const qtyIn = (m, id) => (m.load[id] ? m.load[id].qty : 0);
+  // 정한 인형이 없을 때 대신 넣을 수 있는 창고 인형(직접 정한 진열은 같은 크기·취향만). 비슷하고 많이 채울 수 있는 것부터
+  function substitutes(st, m) {
+    const p = planned(m);
+    if (m.manual && !p) return [];
+    const near = (id) => (p && similar(doll(p), doll(id)) ? 1 : 0);
+    return Object.keys(st.stock).filter((id) => id !== p && st.stock[id].qty > 0 && fitsIn(m, id) && (!m.manual || near(id)))
+      .sort((a, b) => near(b) - near(a) || Math.min(st.stock[b].qty, capacityOf(m, b)) - Math.min(st.stock[a].qty, capacityOf(m, a)));
+  }
+  function canRefill(st, m) {
+    const p = planned(m), cur = loadedIds(m)[0];
+    const room = (id) => freeSlots(m) >= mdef(m).slotCost[doll(id).size];
+    if (p && st.stock[p] && fitsIn(m, p) && (cur !== p || (qtyIn(m, p) < m.plan[p] && room(p)))) return true;
+    if (!cur) return substitutes(st, m).length > 0;
+    return cur !== p && !!st.stock[cur] && room(cur) && (!m.manual || qtyIn(m, cur) < (m.plan[p] || 0));
+  }
   const similar = (a, b) => a.size === b.size && a.taste.some((t) => b.taste.indexOf(t) >= 0); // 대신 채울 수 있는 인형
 
   // ---------- 도전과제 ----------
@@ -369,7 +391,7 @@ const Sim = (function () {
   // ---------- 기계 채우기 ----------
   function loadMachine(st, m, id, qty) {
     const d = doll(id), s = st.stock[id];
-    if (!d || !s || !canHold(m, d)) return 0;
+    if (!d || !s || !canHold(m, d) || loadedIds(m).some((x) => x !== id)) return 0; // 다른 인형이 든 기계에는 못 넣는다
     const per = mdef(m).slotCost[d.size];
     const n = Math.max(0, Math.min(qty, s.qty, Math.floor(freeSlots(m) / per)));
     if (!n) return 0;
@@ -383,24 +405,30 @@ const Sim = (function () {
   function unloadAll(st, m) {
     Object.keys(m.load).forEach((id) => { if (m.load[id].qty > 0) addStock(st, id, m.load[id].qty, m.load[id].cost); delete m.load[id]; });
   }
-  // 보충: 계획(plan)대로 창고에서 채우고, 칸이 남으면 계획에 있는 인형 → 창고의 다른 인형 순으로 마저 채운다.
+  // 보충: 정한 인형(plan)으로 채운다. 기계가 비었는데 그 인형이 없으면 다른 인형 하나를 대신 넣고,
+  // 대신 넣은 뒤에 정한 인형이 창고에 들어오면 다시 바꿔 넣는다.
   function refill(st, m, subs) {
-    let n = 0;
-    const planned = Object.keys(m.plan);
-    planned.forEach((id) => {
-      const have = m.load[id] ? m.load[id].qty : 0;
-      if (m.plan[id] > have) n += loadMachine(st, m, id, m.plan[id] - have);
-    });
-    if (!m.manual) planned.concat(Object.keys(st.stock)).forEach((id) => { if (freeSlots(m) > 0) n += loadMachine(st, m, id, 999); });
-    else planned.forEach((p) => { // 직접 정한 진열: 모자란 만큼만 같은 크기·취향의 인형으로 대신한다
-      let short = m.plan[p] - (m.load[p] ? m.load[p].qty : 0);
-      Object.keys(st.stock).forEach((id) => {
-        if (short <= 0 || id === p || m.plan[id] || !similar(doll(p), doll(id))) return;
-        const k = loadMachine(st, m, id, short);
-        if (k) { short -= k; n += k; if (subs) subs.push(id); }
-      });
-    });
+    const p = planned(m);
+    if (p && st.stock[p] && fitsIn(m, p) && loadedIds(m).some((id) => id !== p)) unloadAll(st, m);
+    let n = p ? loadMachine(st, m, p, m.plan[p] - qtyIn(m, p)) : 0;
+    const cur = loadedIds(m)[0];
+    const goal = (id) => (m.manual ? m.plan[p] || 0 : capacityOf(m, id)) - qtyIn(m, id);
+    if (cur && cur !== p) n += loadMachine(st, m, cur, goal(cur));
+    else if (!cur) {
+      const id = substitutes(st, m)[0];
+      if (id) { const k = loadMachine(st, m, id, goal(id)); n += k; if (k && p && subs) subs.push(id); }
+    }
     return n;
+  }
+  // 놓인 기계 전부: 먼저 모두 정한 인형을 넣고(대신 넣느라 남의 인형을 가져가지 않게) 나머지를 마저 채운다
+  function refillAll(st) {
+    placed(st).forEach((m) => {
+      const p = planned(m);
+      if (!p || !st.stock[p] || !fitsIn(m, p)) return;
+      if (loadedIds(m).some((id) => id !== p)) unloadAll(st, m);
+      loadMachine(st, m, p, m.plan[p] - qtyIn(m, p));
+    });
+    placed(st).forEach((m) => refill(st, m));
   }
 
   // ---------- 취향과 확률 ----------
@@ -466,7 +494,7 @@ const Sim = (function () {
     let delay = mode === 'manual' ? Infinity : Z.RESPOND[mode];
     const env = st.env || startOfDay(st);
     upgradeState(st);
-    if (deliver(st)) placed(st).forEach((m) => refill(st, m)); // 아침 입고분을 진열한다
+    if (deliver(st)) refillAll(st); // 아침 입고분을 진열한다
     upgradeState(st);
     placed(st).forEach((m) => loadedIds(m).forEach((id) => { st.stats.shown[id] = 1; }));
     const rng = makeRng(st.seed * 1000003 + st.day * 17 + 3);
@@ -857,6 +885,7 @@ const Sim = (function () {
     const reserve = o.reserve != null ? o.reserve : 250000;
     const demand = tasteDemand(st);
     const avail = DATA.DOLLS.filter((d) => orderable(st, d) || st.stock[d.id]);
+    const picked = {};
     const covered = {}; // 가게 전체에서 취향이 몇 번 진열됐는지(골고루 갖추기)
     const need = {};
     placed(st).forEach((m) => {
@@ -867,29 +896,22 @@ const Sim = (function () {
         if (owned.length) cand = owned;
       }
       const top = [];
-      while (top.length < (def.kind === 'timer' ? 1 : 5) && top.length < cand.length) {
+      while (!top.length && cand.length) {
         let best = null, bs = -1;
         cand.forEach((d) => {
           if (top.some((x) => x.d === d)) return;
-          let sc = d.taste.reduce((s, x) => s + demand[x] / (1 + (covered[x] || 0) * 0.6), 0);
+          let sc = d.taste.reduce((s, x) => s + demand[x] / (1 + (covered[x] || 0) * 2), 0); // 이미 진열한 취향은 뒤로 미룬다
           if (m.load[d.id] || st.stock[d.id]) sc *= 1.35; // 이미 있는 인형을 먼저 쓴다(재고가 쌓이지 않게)
+          if (picked[d.id]) sc *= 0.5; // 같은 인형을 여러 기계에 넣지 않게
           sc *= (def.sizeAppeal[d.size] || 1) * (hasTrend(st, d) ? 1.2 : 1) / Math.pow(d.cost / (def.grab ? 1 : 30000), def.grab ? 0.15 : 1);
           if (sc > bs) { bs = sc; best = d; }
         });
         top.push({ d: best, sc: bs });
         best.taste.forEach((x) => { covered[x] = (covered[x] || 0) + 1; });
       }
-      // 칸을 점수 순서대로 돌아가며 채운다
+      // 기계 하나에 한 종류를 가득
       m.plan = {}; m.manual = false;
-      let used = 0;
-      for (let guard = 0; guard < 200; guard++) {
-        let placed = false;
-        for (const x of top) {
-          const per = def.slotCost[x.d.size];
-          if (used + per <= slotsOf(m)) { m.plan[x.d.id] = (m.plan[x.d.id] || 0) + 1; used += per; placed = true; }
-        }
-        if (!placed) break;
-      }
+      if (top.length) { m.plan[top[0].d.id] = capacityOf(m, top[0].d.id); picked[top[0].d.id] = 1; }
       Object.keys(m.plan).forEach((id) => { need[id] = (need[id] || 0) + m.plan[id]; });
     });
     // 부족분 발주(하루 소진을 버틸 여유분: 일반 인형은 진열의 3배, 초대형은 5배)
@@ -914,7 +936,7 @@ const Sim = (function () {
     if (o.order === false) buy.length = 0; // 발주 없이 진열만
     if (buy.length) order(st, buy);
     placed(st).forEach((m) => unloadAll(st, m)); // 아침마다 계획대로 다시 진열한다
-    placed(st).forEach((m) => refill(st, m));
+    refillAll(st);
     return { ordered: buy };
   }
 
@@ -957,6 +979,6 @@ const Sim = (function () {
     buyMachine, sellMachine, buyEquipment, expandWarehouse, expandShop, hireStaff, setOption, order, unitCost, orderable, nextSpecial,
     loadMachine, unloadAll, refill, addStock, sellStock,
     upgradeState, canOpen, canInstall, installMachine, storeMachine, sellBin, sellEquipment, buyDecor, sellDecor, canBuyDecor, decorDef, charm, charmRaw, charmCap, checkAchievements, statValue,
-    info: { exchangerOn, placed, placedBins, canRefill, slotsOf, slotsUsed, loadQty, freeSlots, footUsed, stockTotal, incomingTotal, canHold, grabProb, doll, TICKS, isShowDay, isSpecialDay },
+    info: { capacityOf, exchangerOn, placed, placedBins, canRefill, slotsOf, slotsUsed, loadQty, freeSlots, footUsed, stockTotal, incomingTotal, canHold, grabProb, doll, TICKS, isShowDay, isSpecialDay },
   };
 })();

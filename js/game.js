@@ -402,7 +402,8 @@ const Game = (function () {
     }
     const def = DATA.MACHINES[m.type], timer = def.kind === 'timer';
     label(mname(m), p.x + p.w / 2, p.y + 22, C.ink, 'center', 18);
-    label('진열 ' + Sim.info.slotsUsed(m) + ' / ' + Sim.info.slotsOf(m) + ' 칸', p.x + p.w / 2, p.y + 48, C.sub, 'center');
+    const inId = Object.keys(m.load)[0];
+    label(inId ? UI.wrap(Sim.info.doll(inId).name, p.w - 62, 14)[0] + ' ×' + m.load[inId].qty : '인형 없음', p.x + p.w / 2, p.y + 48, inId ? C.sub : C.alert, 'center');
     const row = (y, name, value, minus, plus) => {
       label(name, p.x + 12, y + 17);
       btn(p.x + 66, y, 32, 34, '-', minus);
@@ -413,7 +414,7 @@ const Game = (function () {
     row(p.y + 66, '난이도', m.difficulty + '단계', () => set('difficulty', m.difficulty - 1), () => set('difficulty', m.difficulty + 1));
     row(p.y + 108, '가격', won(m.price), () => set('price', m.price - 100), () => set('price', m.price + 100));
     [['one', '이 기계'], ['type', '같은 종류'], ['all', '전체']].forEach(([k, t], i) => btn(p.x + 8 + i * 66, p.y + 152, 62, 30, t, () => { scope = k; }, { style: scope === k ? 'primary' : 'secondary' }));
-    btn(p.x + 12, p.y + 196, p.w - 24, 38, '인형 진열 바꾸기', () => { popup = 'plan'; page = 0; }, { style: 'primary' });
+    btn(p.x + 12, p.y + 196, p.w - 24, 38, '인형 바꾸기', () => { popup = 'plan'; page = 0; }, { style: 'primary' });
     let y = p.y + 248;
     ['capacity', 'durable'].forEach((k) => {
       const e = DATA.EQUIPMENT[k];
@@ -613,41 +614,53 @@ const Game = (function () {
     }, { style: 'primary', disabled: !count, size: 18 });
   }
 
-  // 진열: 기계에 넣을 인형 수를 정한다(창고에 있는 인형만).
+  // 진열: 기계 하나에 넣을 인형 한 종류와 수를 정한다(창고에 있는 인형만).
   function drawPlanPopup() {
     const m = selectedMachine();
     if (!m) { popup = null; return; }
     const def = DATA.MACHINES[m.type];
-    popupFrame(mname(m) + ' 진열  (' + Sim.info.slotsUsed(m) + ' / ' + Sim.info.slotsOf(m) + ' 칸)');
+    popupFrame(mname(m) + ' 인형 고르기');
     const have = (id) => (st.stock[id] ? st.stock[id].qty : 0);
-    const list = DATA.DOLLS.filter((d) => Sim.info.canHold(m, d) && (have(d.id) || m.load[d.id]));
-    const per = 7;
+    const inside = (id) => (m.load[id] ? m.load[id].qty : 0);
+    const list = DATA.DOLLS.filter((d) => Sim.info.canHold(m, d) && (have(d.id) || inside(d.id))).sort((a, b) => (inside(b.id) > 0) - (inside(a.id) > 0));
+    const per = 6;
     pager(list.length, per);
+    label('기계 하나에는 한 종류의 인형만 넣을 수 있어요.', PANEL.x + 26, PANEL.y + 74, C.sub);
     if (!list.length) label('넣을 수 있는 인형이 창고에 없어요. 먼저 발주해 주세요.', 480, 290, C.sub, 'center', 18);
-    const change = (d, n) => {
-      const cur = m.load[d.id] ? m.load[d.id].qty : 0;
-      if (n > 0) Sim.loadMachine(st, m, d.id, n);
-      else if (cur) { const take = Math.min(cur, -n); Sim.addStock(st, d.id, take, m.load[d.id].cost); m.load[d.id].qty -= take; if (!m.load[d.id].qty) delete m.load[d.id]; }
-      // 지금 진열을 계획으로 기억한다(영업 중 보충도 이 구성으로)
-      m.manual = true; m.plan = {};
-      Object.keys(m.load).forEach((id) => { m.plan[id] = m.load[id].qty; st.stats.shown[id] = 1; });
+    // 지금 진열을 계획으로 기억한다(영업 중 보충도 이 인형으로)
+    const remember = (plan) => {
+      m.manual = true; m.plan = plan;
+      Object.keys(m.load).forEach((id) => { st.stats.shown[id] = 1; });
       achieve(Sim.checkAchievements(st));
       save();
     };
+    const choose = (d) => { // 든 인형을 창고로 돌리고 새 인형을 가득 넣는다
+      Sim.unloadAll(st, m);
+      Sim.loadMachine(st, m, d.id, 999);
+      remember({ [d.id]: Sim.info.capacityOf(m, d.id) });
+    };
+    const change = (d, n) => {
+      const cur = inside(d.id);
+      if (n > 0) Sim.loadMachine(st, m, d.id, n);
+      else if (cur) { const take = Math.min(cur, -n); Sim.addStock(st, d.id, take, m.load[d.id].cost); m.load[d.id].qty -= take; if (!m.load[d.id].qty) delete m.load[d.id]; }
+      remember(inside(d.id) ? { [d.id]: inside(d.id) } : {});
+    };
     list.slice(page * per, page * per + per).forEach((d, i) => {
-      const y = PANEL.y + 70 + i * 46;
-      const q = m.load[d.id] ? m.load[d.id].qty : 0;
+      const y = PANEL.y + 92 + i * 52;
+      const q = inside(d.id);
+      if (q) UI.framed({ x: PANEL.x + 20, y: y - 2, w: PANEL.w - 40, h: 46 }, '#eaf4fd', 2, C.blue);
       ShopView.dollIcon(PANEL.x + 30, y + 8, d, 3);
       label(d.name, PANEL.x + 66, y + 10);
-      label(d.size + ' · ' + d.taste.join(', ') + ' · 칸 ' + def.slotCost[d.size] + ' · 성공 ' + (Sim.info.grabProb(m, d, 1) * 100).toFixed(1) + '%', PANEL.x + 66, y + 30, C.sub);
-      label('창고 ' + have(d.id), PANEL.x + 520, y + 20, C.sub, 'right');
+      label(SIZE_NAME[d.size] + ' · ' + d.taste[0] + ' · 최대 ' + Sim.info.capacityOf(m, d.id) + '개 · 성공 ' + (Sim.info.grabProb(m, d, 1) * 100).toFixed(1) + '%', PANEL.x + 66, y + 30, C.sub);
+      label('창고 ' + have(d.id), PANEL.x + 520, y + 21, C.sub, 'right');
+      if (!q) { btn(PANEL.x + 540, y + 4, 200, 34, '이 인형 넣기', () => choose(d), { disabled: !have(d.id) }); return; }
       btn(PANEL.x + 540, y + 4, 40, 34, '-5', () => change(d, -5));
       btn(PANEL.x + 586, y + 4, 32, 34, '-', () => change(d, -1));
-      label(String(q), PANEL.x + 640, y + 21, q ? C.blue : C.sub, 'center', 18);
+      label(String(q), PANEL.x + 640, y + 21, C.blue, 'center', 18);
       btn(PANEL.x + 662, y + 4, 32, 34, '+', () => change(d, 1));
       btn(PANEL.x + 700, y + 4, 40, 34, '+5', () => change(d, 5));
     });
-    btn(PANEL.x + 560, PANEL.y + PANEL.h - 50, 180, 36, '전부 빼기', () => { Sim.unloadAll(st, m); m.plan = {}; m.manual = true; save(); });
+    btn(PANEL.x + 560, PANEL.y + PANEL.h - 50, 180, 36, '비우기', () => { Sim.unloadAll(st, m); remember({}); }, { disabled: !Sim.info.loadQty(m) });
   }
 
   // ---------- 창고 ----------
