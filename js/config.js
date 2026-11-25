@@ -69,8 +69,9 @@ const CFG = {
     STRENGTH: [1.5, 1.25, 1.0, 0.8, 0.6],      // 난이도 1(쉬움)~5(어려움)의 집기 확률 배수
     // 손님 개인차(분류와 무관): 예산 평균·편차, patience 연속 실패 허용, wait 대기 한계(분), skill 숙련, win 성공 후 계속할 확률
     CUSTOMER: { BUDGET_AVG: 7000, BUDGET_SPREAD: 0.45, patience: [4, 8], wait: [6, 12], skill: [0.85, 1.15], win: 0.45 },
-    // 취향 일치: appeal [안 맞음, 맞음] 선호 배수. 맞는 인형이 없으면 leave 확률로 돌아가고 남아도 최대 noneMaxPlays판
-    MATCH: { appeal: [0.35, 1.0], leave: 0.5, noneMaxPlays: 2, satWin: 0.08 },
+    // 취향: appeal [관심 없음, 즐김, 가장 좋아함] 선호 배수. 즐길 인형이 없으면 leave 확률로 돌아가고 남아도 최대 noneMaxPlays판.
+    // 가장 좋아하는 인형을 하면 예산이 favBudget배로 늘고 계속할 확률이 extraTry만큼 오른다.
+    MATCH: { appeal: [0.35, 1.0, 1.7], leave: 0.5, noneMaxPlays: 2, satWin: 0.08, extraTry: 0.12, favBudget: 1.3 },
     CONV_K: 0.35,                               // 손님이 기계 가격·줄 때문에 돌아가는 기준(작을수록 덜 돌아간다)
     // 영업 중 일이 생긴 뒤 처리까지 걸리는 분. bot = 직접 운영(검증용), staff = 건너뛴 날의 직원, none = 방치
     RESPOND: { bot: 8, staff: 20, none: 9999 },

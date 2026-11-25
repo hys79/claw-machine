@@ -309,6 +309,17 @@ const Game = (function () {
     label(next ? '인기 ' + Math.round(st.popularity) + ' / ' + next : '인기 ' + Math.round(st.popularity) + ' · 전국 ' + Sim.leaderboard(st, 1).position + '위', 366, 41, C.sub);
   }
 
+  // 오늘 또는 내일이 아레나 공연일이면 안내 문구(K-pop 팬이 오기 시작한 뒤부터)
+  function showNotice() {
+    const kpop = DATA.CUSTOMERS.find((c) => c.id === 'kpop');
+    if (st.rank < kpop.rank) return null;
+    const kind = (day) => (Sim.info.isSpecialDay(day) ? '특별 공연' : Sim.info.isShowDay(day) ? '아레나 공연' : null);
+    const today = kind(st.day), next = kind(st.day + 1);
+    if (today) return '♪ 오늘 ' + today + '! K-pop 팬이 몰려요. 아이돌 인형을 넉넉히 준비하세요';
+    if (next) return '♪ 내일 ' + next + '! 아이돌 인형을 미리 발주해 두세요';
+    return null;
+  }
+
   // ---------- 건축 화면 ----------
   function drawBuild(ctx) {
     ShopView.room(st, { grid: true });
@@ -327,6 +338,8 @@ const Game = (function () {
       if (placing.x < 720) ShopView.thing(st, pt, ShopView.rectOf(g, pt, c), { ghost: ShopView.canPlace(st, pt, c.x, c.y) ? 'ok' : 'no' });
     }
     topBar();
+    const notice = showNotice();
+    if (notice && !tutorialStep()) { UI.chip({ x: 90, y: 478, w: 550, h: 24 }); label(notice, 365, 490, C.alert, 'center'); }
     label('기계 칸 ' + Sim.info.footUsed(st) + ' / ' + CFG.SIM.SHOP[st.shopLevel].slots, 560, 18);
     label('창고 ' + Sim.info.stockTotal(st) + ' / ' + CFG.SIM.WAREHOUSE[st.warehouseLevel].cap, 560, 41);
     label('유행 ' + st.trend.taste + ' → 다음 ' + st.trend.next, 700, 18, '#8a4fc0');
@@ -572,12 +585,13 @@ const Game = (function () {
     const sizes = ['all'].concat(['S', 'M', 'L', 'XL'].filter((z) => all.some((d) => d.size === z)));
     sizes.forEach((z, i) => btn(BIG.x + 160 + i * 86, BIG.y + 12, 78, 34, z === 'all' ? '전체' : SIZE_NAME[z], () => { orderSize = z; page = 0; }, { style: orderSize === z ? 'primary' : 'secondary' }));
     const short = shortage();
-    const score = (d) => (d.id === orderFirst ? 4 : 0) + (short.indexOf(d.id) >= 0 ? 2 : 0) + (trendy(d) ? 1 : 0);
+    const score = (d) => (d.id === orderFirst ? 8 : 0) + (showNotice() && d.taste[0] === '아이돌' ? 4 : 0) + (short.indexOf(d.id) >= 0 ? 2 : 0) + (trendy(d) ? 1 : 0);
     const list = all.filter((d) => orderSize === 'all' || d.size === orderSize).sort((a, b) => score(b) - score(a));
     const per = 6;
     pager(list.length, per, BIG);
     const miss = (st.lastMissed || []).join(', ');
-    label('이번 주 유행: ' + st.trend.taste + (miss ? '   ·   손님이 찾던 취향: ' + miss : ''), BIG.x + 20, BIG.y + 74, '#6a2f9f');
+    const notice = showNotice();
+    label(notice || '이번 주 유행: ' + st.trend.taste + (miss ? '   ·   손님이 찾던 취향: ' + miss : ''), BIG.x + 20, BIG.y + 74, notice ? C.alert : '#6a2f9f');
     list.slice(page * per, page * per + per).forEach((d, i) => orderCard(BIG.x + 20 + (i % 3) * 220, BIG.y + 90 + Math.floor(i / 3) * 180, d));
     // 장바구니
     const x = BIG.x + 684, w = 196, mid = x + w / 2, top = BIG.y + 66;

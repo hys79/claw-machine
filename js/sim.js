@@ -432,7 +432,8 @@ const Sim = (function () {
   }
 
   // ---------- 취향과 확률 ----------
-  const matchCount = (tastes, d) => tastes.reduce((n, t) => n + (d.taste.indexOf(t) >= 0 ? 1 : 0), 0);
+  // 손님이 인형에 끌리는 정도: 2 가장 좋아함 / 1 즐김 / 0 관심 없음
+  const affinity = (c, d) => (d.taste.indexOf(c.tastes[0]) >= 0 ? 2 : c.cat.likesOthers ? 1 : 0);
   function grabProb(m, d, skill) {
     const def = mdef(m);
     if (def.kind === 'timer') { // 정확한 시간에 버튼 누르기: 버튼 오차 ~ 정규분포(숙련될수록 작다), 허용 오차 안이면 성공
@@ -593,13 +594,13 @@ const Sim = (function () {
       return rng.pickW(list, ws);
     }
     const open = openTastes(st);
-    function pickTastes(cat) { // 손님 한 명의 취향은 하나(배열로 담는다)
+    function pickTastes(cat) { // 손님 한 명의 가장 좋아하는 취향(배열로 담는다)
       const list = Object.keys(cat.tastes).filter((x) => open.indexOf(x) >= 0);
       if (!list.length) return [rng.pickW(open, open.map(() => 1))];
       return [rng.pickW(list, list.map((x) => cat.tastes[x] * (x === st.trend.taste ? Z.TREND.demand : 1)))];
     }
 
-    const dollAppeal = (c, d, m) => Z.MATCH.appeal[matchCount(c.tastes, d)] * (hasTrend(st, d) ? Z.TREND.appeal : 1) * (mdef(m).sizeAppeal[d.size] || 1);
+    const dollAppeal = (c, d, m) => Z.MATCH.appeal[affinity(c, d)] * (hasTrend(st, d) ? Z.TREND.appeal : 1) * (mdef(m).sizeAppeal[d.size] || 1);
 
     function chooseTarget(c) {
       let best = 0, bestMatch = 0; const cand = []; const seen = {};
@@ -611,11 +612,11 @@ const Sim = (function () {
           if (r.down) return;
           const sc = dollAppeal(c, d, r.m) * r.def.appeal * pf * qpen;
           cand.push({ r, id, sc });
-          bestMatch = Math.max(bestMatch, matchCount(c.tastes, d));
+          bestMatch = Math.max(bestMatch, affinity(c, d));
           if (sc > best) best = sc;
         });
       });
-      c.tastes.forEach((x) => { if (!seen[x]) R.missed[x]++; }); // 원했지만 가게에 없던 취향
+      c.tastes.forEach((x) => { if (!seen[x]) R.missed[x]++; }); // 가장 좋아하는데 가게에 없던 취향
       if (!cand.length) return null;
       if (bestMatch === 0) {
         if (rng() < Z.MATCH.leave) return null;
@@ -649,9 +650,11 @@ const Sim = (function () {
         if (!ids.length) { leave(c, 'empty'); return; }
         c.doll = rng.pickW(ids, ids.map((id) => Math.pow(dollAppeal(c, doll(id), m), 2)));
       }
-      const d = doll(c.doll), match = matchCount(c.tastes, d);
-      // 인기 인형(취향에 맞고, 유행이거나 희귀)은 어려워도 도전한다
-      const popular = match > 0 && (hasTrend(st, d) || d.taste.indexOf('희귀') >= 0);
+      const d = doll(c.doll), match = affinity(c, d);
+      // 가장 좋아하는 인형에는 돈을 더 쓴다
+      if (match === 2 && !c.boosted) { c.boosted = true; c.budget = Math.round(c.budget * Z.MATCH.favBudget / 100) * 100; }
+      // 인기 인형(가장 좋아하거나, 즐기는 것 중 유행·희귀)은 어려워도 도전한다
+      const popular = match === 2 || (match === 1 && (hasTrend(st, d) || d.taste.indexOf('희귀') >= 0));
       c.budget -= m.price; c.spent += m.price; c.plays++;
       R.plays++; R.revenue += m.price; r.plays++; r.rev += m.price;
       R.byType[c.cat.id].plays++; R.byType[c.cat.id].revenue += m.price;
@@ -671,7 +674,7 @@ const Sim = (function () {
         const harsh = popular ? 0.6 : 1 + (m.difficulty - 3) * 0.3; // 평범한 인형은 어려울수록 불만이 크다
         c.sat += 0.03 - (near ? 0.04 : 0.07) * harsh; c.fails++;
       }
-      const bonus = (popular ? 0.06 : 0);
+      const bonus = (match === 2 ? Z.MATCH.extraTry : 0) + (popular ? 0.06 : 0);
       let cont;
       if (c.budget < m.price || c.plays >= c.maxPlays) cont = false;
       else if (won) cont = rng() < Z.CUSTOMER.win + bonus;
@@ -863,14 +866,19 @@ const Sim = (function () {
   }
 
   // ---------- 자동 준비(추천 운영): 진열 계획 → 부족한 인형 발주 → 기계 채우기 ----------
+  const isArenaDay = (day) => isShowDay(day) || isSpecialDay(day);
   function tasteDemand(st) {
     const out = {};
     DATA.TASTES.forEach((x) => { out[x] = 0; });
-    const open = openTastes(st);
+    const open = openTastes(st), show = isArenaDay(st.day);
     custTypes.filter((c) => c.rank <= st.rank).forEach((c) => {
+      const w = c.weight * (show ? c.time.show : 1);
       const list = Object.keys(c.tastes).filter((x) => open.indexOf(x) >= 0);
-      const sum = list.reduce((s, x) => s + c.tastes[x], 0);
-      list.forEach((x) => { out[x] += c.weight * (c.tastes[x] / sum) * (x === st.trend.taste ? Z.TREND.demand : 1); });
+      const favs = list.length ? list : open;
+      const share = (x) => (list.length ? c.tastes[x] : 1) * (x === st.trend.taste ? Z.TREND.demand : 1);
+      const sum = favs.reduce((s, x) => s + share(x), 0);
+      favs.forEach((x) => { out[x] += w * share(x) / sum; });
+      if (c.likesOthers) open.forEach((x) => { out[x] += w * 0.5 / open.length; });
     });
     return out;
   }
@@ -926,7 +934,8 @@ const Sim = (function () {
       const inMachines = st.machines.reduce((n, m) => n + (m.load[id] ? m.load[id].qty : 0), 0);
       const inStock = st.stock[id] ? st.stock[id].qty : 0;
       const inc = st.incoming.filter((x) => x.id === id).reduce((n, x) => n + x.qty, 0);
-      const want = (d.size === 'XL' ? need[id] * 5 : need[id] * 3) - inMachines - inStock - inc;
+      const rush = isArenaDay(st.day) && d.taste[0] === '아이돌' ? 2 : 1; // 공연일에는 아이돌 인형을 두 배 준비
+      const want = (d.size === 'XL' ? need[id] * 5 : need[id] * 3) * rush - inMachines - inStock - inc;
       const q = Math.min(want, cap);
       if (q <= 0) return;
       const uc = unitCost(st, id, q);

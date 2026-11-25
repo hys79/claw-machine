@@ -263,13 +263,14 @@ DATA.MACHINES = {
   },
 };
 
-// 손님 분류: 분류마다 다른 것은 선호 취향(tastes: 뽑힐 가중치)과 출몰 시간뿐이다. rank: 등장하는 단계.
+// 손님 분류. 손님마다 '가장 좋아하는 취향'이 하나 있다(그 인형에 가장 끌리고 돈을 더 쓴다).
+// tastes: 가장 좋아하는 취향이 정해지는 비중, likesOthers: 다른 취향도 즐기는지, time: 출몰 시간(show: 공연일 배수). rank: 등장하는 단계.
 DATA.CUSTOMERS = [
-  { id: 'normal', name: '일반', rank: 1, weight: 1.0, tastes: { 동물: 3, 음식: 2.5, 코믹: 2.5, 희귀: 0.3, 아이돌: 0.4 },
+  { id: 'normal', name: '일반', rank: 1, weight: 1.0, likesOthers: true, tastes: { 동물: 1, 음식: 1, 코믹: 1, 희귀: 1, 아이돌: 1 },
     time: { hours: [12, 20], mult: 1.3, off: 0.8, weekend: 1.3, show: 1.0 } },
-  { id: 'mania', name: '마니아', rank: 1, weight: 0.3, tastes: { 희귀: 3, 코믹: 1.5 },
+  { id: 'mania', name: '마니아', rank: 1, weight: 0.3, likesOthers: true, tastes: { 희귀: 1 },
     time: { hours: [19, 22], mult: 2.2, off: 0.5, weekend: 1.2, show: 0.8 } },
-  { id: 'kpop', name: 'K-pop 팬', rank: 2, weight: 0.3, tastes: { 아이돌: 5, 희귀: 0.5 },
+  { id: 'kpop', name: 'K-pop 팬', rank: 2, weight: 0.3, likesOthers: false, tastes: { 아이돌: 1 },
     time: { hours: [13, 19], mult: 1.8, off: 0.6, weekend: 1.2, show: 3.0 } },
 ];
 
