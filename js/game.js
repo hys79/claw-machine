@@ -4,7 +4,9 @@ const Game = (function () {
   const C = CFG.COLOR;
   const MIN_PER_SEC = (CFG.SIM.CLOSE - CFG.SIM.OPEN) * 60 / 120; // 1배속: 하루 영업을 120초에
   const DOW = ['월', '화', '수', '목', '금', '토', '일'];
-  const WEATHER = { sunny: '맑음', cloudy: '흐림', rain: '비', snow: '눈' };
+  const WEATHER = { sunny: '맑음', cloudy: '흐림', rain: '비', snow: '눈', heat: '폭염' };
+  const dateText = (day) => { const d = Sim.info.dateOf(day); return d.m + '월 ' + d.d + '일 (' + DOW[(day - 1) % 7] + ')'; };
+  const eventById = (id) => DATA.EVENTS.concat(DATA.HOLIDAYS).find((e) => e.id === id);
   const TASK = { refill: '보충', clean: '청소', exchange: '환전', repair: '수리' };
   const BALK = { nothing: '취향이 없네', budget: '돈이 모자라', queue: '줄이 길어', empty: '비었잖아', exchange: '환전이 안 돼' };
 
@@ -23,7 +25,8 @@ const Game = (function () {
   let tab = 'machine';    // 상점 탭
   let page = 0;
   let cart = {};
-  let cal = null;         // 행사 달력 창: 보고 있는 4주 묶음 번호(닫혀 있으면 null)
+  let cal = null;         // 행사 달력 창: 보고 있는 달(연×12+월-1, 닫혀 있으면 null)
+  let scene = null;       // 가게 바깥 모습: {kind 'open'|'close', start, env}
   let cartPlans = null;   // 추천 담기로 채운 장바구니라면 그때의 진열 계획(주문할 때 적용)
   let orderSize = 'all', orderFirst = null, stockSel = null, itemSel = null;
   let msg = null;         // {text, until}
@@ -67,9 +70,9 @@ const Game = (function () {
   // 화면을 나갈 때: 영업 중이었다면 그날 시작 전 상태로 되돌린다.
   function leave() {
     if (phase === 'open' && snapshot) State.data.sim = JSON.parse(snapshot);
-    day = null; phase = 'build'; popup = null; drag = null; cal = null;
+    day = null; phase = 'build'; popup = null; drag = null; cal = null; scene = null;
   }
-  function escape() { if (cal !== null) { cal = null; return true; } if (placing) { placing = null; return true; } if (popup) { popup = null; return true; } return false; }
+  function escape() { if (scene) { scene = null; return true; } if (cal !== null) { cal = null; return true; } if (placing) { placing = null; return true; } if (popup) { popup = null; return true; } return false; }
 
   // ---------- 설치물 ----------
   const thingName = (t) => (t.kind === 'machine' ? mname(t.ref) : t.kind === 'bin' ? (t.ref.big ? '대형 쓰레기통' : '쓰레기통')
@@ -181,6 +184,7 @@ const Game = (function () {
     phase = 'open'; popup = null; sel = null; speed = 1; paused = false; acc = 0; last = null;
     pops = []; today = { revenue: 0, visitors: 0, wins: 0 };
     Actors.reset(st);
+    showScene('open', day.result);
     Sound.sfx('doorbell');
   }
   function finishDay() {
@@ -188,8 +192,21 @@ const Game = (function () {
     achieve(result.achieved);
     result.achieved = dayAch.concat(result.achieved);
     day = null; phase = 'result'; snapshot = null;
+    showScene('close', result);
     Sound.sfx(result.rankUp ? 'fanfare' : 'prize');
     save();
+  }
+  // 하루의 시작·끝에 가게 바깥 모습을 잠깐 보여 준다(그동안 영업은 멈춘다)
+  function showScene(kind, r) { scene = { kind, start: null, env: { day: r.day, weather: r.weather, show: r.show, special: r.special, event: r.event } }; }
+  function drawScene(ctx, now) {
+    if (scene.start == null) scene.start = now;
+    if (now - scene.start >= Exterior.DUR) { scene = null; return; }
+    const e = scene.env, event = eventById(e.event);
+    Exterior.draw(ctx, now - scene.start, {
+      kind: scene.kind, season: Sim.info.seasonOf(e.day), weather: e.weather, show: e.show, special: e.special,
+      id: event && event.id, eventName: event && event.name, dateText: dateText(e.day), shopName: st.shopName || '내 가게', shopLevel: st.shopLevel,
+    });
+    UI.button({ x: -600, y: 0, w: 2200, h: 576 }, '', { onClick: () => { scene = null; }, draw: () => {}, bare: true });
   }
   function skip() {
     const r = Sim.skipDay(st);
@@ -242,7 +259,7 @@ const Game = (function () {
   function update(now) {
     const dt = last == null ? 0 : Math.max(0, Math.min(0.1, now - last));
     last = now; clockNow = now;
-    if (phase !== 'open' || paused || cal !== null) return; // 달력을 보는 동안은 멈춘다
+    if (phase !== 'open' || paused || cal !== null || scene) return; // 달력이나 바깥 모습을 보는 동안은 멈춘다
     acc += dt * MIN_PER_SEC * speed;
     if (acc >= 1) {
       const n = Math.floor(acc); acc -= n; onEvents(day.step(n));
@@ -254,7 +271,7 @@ const Game = (function () {
 
   // ---------- 건축 화면의 끌어 놓기 ----------
   function press(p) {
-    if (cal !== null || (dev && inDev(p))) return;
+    if (cal !== null || scene || (dev && inDev(p))) return;
     if (phase === 'open') { // 바닥의 쓰레기를 누르면 주우러 간다
       const id = Actors.litterAt(p);
       if (id != null && Actors.enqueue({ type: 'litter', litter: id })) Sound.sfx('click');
@@ -309,12 +326,14 @@ const Game = (function () {
     const env = (phase === 'result' ? result : st.env) || {}; // 정산 중에는 방금 끝난 날의 날씨
     const dayNo = phase === 'result' ? result.day : st.day;
     // 날짜: 누르면 행사 달력
-    UI.button({ x: 8, y: 7, w: 172, h: 42 }, '', { onClick: openCalendar, draw: () => {}, bare: true });
+    UI.button({ x: 8, y: 7, w: 198, h: 42 }, '', { onClick: openCalendar, draw: () => {}, bare: true });
     calendarIcon(10, 13);
-    label(dayNo + '일차 (' + DOW[(dayNo - 1) % 7] + ')', 44, 18, C.ink, 'left', 18);
-    const event = phase === 'result' ? DATA.EVENTS.find((e) => e.id === result.event) : Sim.info.eventOf(st, dayNo);
-    label((WEATHER[env.weather] || '') + (env.special ? ' · 특별 공연!' : env.show ? ' · 공연일' : event ? ' · ' + event.short : ''), 44, 41, env.special || env.show ? C.alert : event ? EVENT_INK : C.sub);
-    UI.moneyPill({ x: 190, y: 12, w: 162, h: 32 }, won(st.money));
+    label(dateText(dayNo), 44, 18, C.ink, 'left', 18);
+    const event = phase === 'result' ? eventById(result.event) : Sim.info.eventOf(st, dayNo);
+    const today = (WEATHER[env.weather] || '') + (env.special ? ' · 특별 공연!' : env.show && !event ? ' · 공연일' : event ? ' · ' + event.short : '');
+    const full = dayNo + '일차 · ' + today;
+    label(UI.measure(full, 14) <= 164 ? full : today, 44, 41, env.special || env.show ? C.alert : event ? EVENT_INK : C.sub);
+    UI.moneyPill({ x: 214, y: 12, w: 142, h: 32 }, won(st.money));
     label(Sim.rankNo(st) + '랭크', 366, 18, C.blue, 'left', 18);
     const next = CFG.SIM.RANK_POP[st.rank];
     label(next ? '인기 ' + Math.round(st.popularity) + ' / ' + next : '인기 ' + Math.round(st.popularity) + ' · 전국 ' + Sim.leaderboard(st, 1).position + '위', 366, 41, C.sub);
@@ -329,9 +348,10 @@ const Game = (function () {
     const when = (n) => (n === 0 ? '오늘' : n === 1 ? '내일' : n + '일 뒤');
     const event = (n) => {
       const e = Sim.info.eventOf(st, st.day + n);
-      return e && { text: '★ ' + when(n) + ' ' + e.name + '! ' + e.taste + (n ? ' 인형을 미리 발주해 두세요' : ' 인형이 잘 팔려요'), taste: e.taste, color: EVENT_INK };
+      return e && { text: '★ ' + when(n) + ' ' + e.name + '! ' + e.taste + (n ? ' 인형을 미리 발주해 두세요' : ' 인형이 잘 팔려요'), taste: e.taste, color: EVENT_INK, holiday: !!Sim.info.holidayOf(st.day + n) };
     };
     const open = st.rank >= kpop.rank;
+    if (event(0) && event(0).holiday) return event(0);
     if (open && kind(st.day)) return show('♪ 오늘 ' + kind(st.day) + '! K-pop 팬·외국인이 몰려요. 아이돌 인형 준비!');
     if (event(0)) return event(0);
     if (open && kind(st.day + 1)) return show('♪ 내일 ' + kind(st.day + 1) + '! 아이돌 인형을 미리 발주해 두세요');
@@ -339,7 +359,6 @@ const Game = (function () {
   }
 
   // ---------- 행사 달력 ----------
-  const CAL_DAYS = 28; // 한 장에 4주
   function calendarIcon(x, y) {
     UI.framed({ x: x + 2, y: y + 2, w: 24, h: 26 }, C.white, 2);
     UI.rect(x + 2, y + 2, 24, 8, C.alert);
@@ -347,36 +366,45 @@ const Game = (function () {
     for (let r = 0; r < 3; r++) for (let c = 0; c < 4; c++) UI.rect(x + 5 + c * 5, y + 13 + r * 5, 3, 3, r === 1 && c === 2 ? C.blue : C.edge);
   }
   const calDay = () => (phase === 'result' && result ? result.day : st.day);
-  function openCalendar() { cal = Math.floor((calDay() - 1) / CAL_DAYS); }
+  const monthOf = (day) => { const d = Sim.info.dateOf(day); return d.y * 12 + d.m - 1; };
+  function openCalendar() { cal = monthOf(calDay()); }
   function drawCalendar() {
     popupFrame('행사 달력', null, PANEL, () => { cal = null; });
-    const now = calDay(), first = cal * CAL_DAYS + 1, W = 100, H = 74, x0 = PANEL.x + 30, y0 = PANEL.y + 96;
-    DOW.forEach((d, i) => label(d, x0 + i * W + W / 2, PANEL.y + 76, i >= 5 ? C.alert : C.sub, 'center'));
-    for (let i = 0; i < CAL_DAYS; i++) {
-      const n = first + i, x = x0 + (i % 7) * W, y = y0 + Math.floor(i / 7) * H;
-      const special = Sim.info.isSpecialDay(n), show = Sim.info.isShowDay(n), event = Sim.info.eventOf(st, n);
-      UI.framed({ x: x + 3, y: y + 3, w: W - 6, h: H - 6 }, special ? '#fff0b8' : show ? '#fde3ea' : event ? '#dff3e2' : n < now ? C.soft : C.white, 2, n === now ? C.blue : C.line);
-      if (n === now) [[3, 3, W - 6, 3], [3, H - 6, W - 6, 3], [3, 3, 3, H - 6], [W - 6, 3, 3, H - 6]].forEach((a) => UI.rect(x + a[0], y + a[1], a[2], a[3], C.blue));
-      label(n + '일', x + 10, y + 18, n < now ? C.sub : C.ink);
-      if (n === now) label('오늘', x + W - 10, y + 18, C.blue, 'right');
-      if (special) label('★ 특별 공연', x + W / 2, y + 48, n < now ? C.sub : '#8a5a1a', 'center');
-      else if (show) label('♪ 공연', x + W / 2, y + 48, n < now ? C.sub : C.alert, 'center');
-      else if (event) {
-        ShopView.tasteIcon(x + W / 2 - 7, y + 29, event.taste);
-        label(event.short, x + W / 2, y + 56, n < now ? C.sub : EVENT_INK, 'center');
-      }
+    const now = calDay(), y = Math.floor(cal / 12), m = (cal % 12) + 1;
+    const first = Sim.info.dayOf(y, m, 1), last = Sim.info.dayOf(m === 12 ? y + 1 : y, m === 12 ? 1 : m + 1, 1) - 1;
+    const lead = (((first - 1) % 7) + 7) % 7; // 1일 앞의 빈 칸 수(월요일 시작)
+    const rows = Math.ceil((lead + last - first + 1) / 7);
+    const W = 100, H = Math.floor(300 / rows), x0 = PANEL.x + 30, y0 = PANEL.y + 98;
+    label(y + '년 ' + m + '월', PANEL.x + 30, PANEL.y + 29, C.blue, 'left', 22);
+    DOW.forEach((d, i) => label(d, x0 + i * W + W / 2, PANEL.y + 77, i >= 5 ? C.alert : C.sub, 'center'));
+    for (let day = first; day <= last; day++) {
+      const i = lead + day - first, x = x0 + (i % 7) * W, cy = y0 + Math.floor(i / 7) * H;
+      const live = day >= 1, past = day < now; // 개업 전의 날짜는 비워 둔다
+      const special = live && Sim.info.isSpecialDay(day), show = live && Sim.info.isShowDay(day), event = live ? Sim.info.eventOf(st, day) : null;
+      const holiday = event && Sim.info.holidayOf(day);
+      UI.framed({ x: x + 3, y: cy + 2, w: W - 6, h: H - 4 }, special ? '#fff0b8' : holiday ? '#ffe2c4' : event ? '#dff3e2' : show ? '#fde3ea' : past ? C.soft : C.white, 2, C.line);
+      if (day === now) [[3, 2, W - 6, 3], [3, H - 5, W - 6, 3], [3, 2, 3, H - 4], [W - 6, 2, 3, H - 4]].forEach((a) => UI.rect(x + a[0], cy + a[1], a[2], a[3], C.blue));
+      const num = String(Sim.info.dateOf(day).d);
+      label(num, x + 9, cy + 15, past ? C.sub : C.ink);
+      if (show && event && !special) label('♪', x + 15 + UI.measure(num, 14), cy + 15, past ? C.sub : C.alert);
+      if (event) ShopView.tasteIcon(x + W - 24, cy + 7, event.taste);
+      else if (day === now) label('오늘', x + W - 10, cy + 15, C.blue, 'right');
+      const text = special ? '★ 특별 공연' : event ? event.short : show ? '♪ 공연' : '';
+      const color = past ? C.sub : special ? '#8a5a1a' : holiday ? '#a5521a' : event ? EVENT_INK : C.alert;
+      if (text) label(text, x + W / 2, cy + H - 15, color, 'center');
     }
     const by = PANEL.y + PANEL.h - 46;
-    btn(PANEL.x + 30, by, 70, 34, '이전', () => { cal--; }, { disabled: cal <= 0 });
+    btn(PANEL.x + 30, by, 70, 34, '지난달', () => { cal--; }, { disabled: cal <= monthOf(1) });
     btn(PANEL.x + 108, by, 70, 34, '오늘', openCalendar);
-    btn(PANEL.x + 186, by, 70, 34, '다음', () => { cal++; });
+    btn(PANEL.x + 186, by, 70, 34, '다음달', () => { cal++; });
     let next = now;
     while (!Sim.info.isSpecialDay(next)) next++;
-    label('다음 특별 공연: ' + next + '일차' + (next === now ? ' (오늘)' : ' (' + (next - now) + '일 뒤)'), PANEL.x + PANEL.w - 30, by + 8, C.ink, 'right');
+    const right = PANEL.x + PANEL.w - 30, left = (d) => (d === now ? ' (오늘)' : ' (' + (d - now) + '일 뒤)');
+    label('오늘은 ' + now + '일차 · 다음 특별 공연 ' + dateText(next) + left(next), right, by + 8, C.ink, 'right');
     let ahead = now;
     while (ahead < now + 60 && !Sim.info.eventOf(st, ahead)) ahead++;
     const soon = Sim.info.eventOf(st, ahead);
-    if (soon) label('다음 동네 행사: ' + ahead + '일차 ' + soon.name + (ahead === now ? ' (오늘)' : ' (' + (ahead - now) + '일 뒤)'), PANEL.x + PANEL.w - 30, by + 28, EVENT_INK, 'right');
+    if (soon) label('다음 행사 ' + dateText(ahead) + ' ' + soon.name + left(ahead), right, by + 28, EVENT_INK, 'right');
   }
 
   // ---------- 건축 화면 ----------
@@ -894,7 +922,7 @@ const Game = (function () {
     const R = result;
     UI.rect(-600, 59, 2200, 517, C.scrim);
     UI.panel(PANEL, C.white);
-    UI.text(R.day + '일차 정산', 480, PANEL.y + 30, 22, C.ink);
+    UI.text(dateText(R.day) + ' · ' + R.day + '일차 정산', 480, PANEL.y + 30, 22, C.ink);
     UI.hline(PANEL.x + 20, PANEL.y + 54, PANEL.w - 40);
     const money = [['매출', R.revenue], ['인형 원가', -R.payout], ['임대료', -R.rent], ['전기·유지비', -(R.power + R.upkeep)], ['수리비', -R.repair], ['월급', -R.wage]];
     money.forEach((r, i) => {
@@ -979,7 +1007,9 @@ const Game = (function () {
     UI.rect(0, 0, W, H, '#cfe0ef');
     ctx.save();
     ctx.translate(OX, 0);
-    if (phase === 'open') drawOpen(ctx, now);
+    if (scene) drawScene(ctx, now);
+    if (scene) { /* 바깥 모습을 보는 중 */ }
+    else if (phase === 'open') drawOpen(ctx, now);
     else if (phase === 'result') drawResult();
     else {
       drawBuild(ctx);
@@ -989,7 +1019,7 @@ const Game = (function () {
       else if (popup === 'plan') drawPlanPopup();
     }
     if (cal !== null) drawCalendar();
-    else { drawTutorial(now); drawDev(); }
+    else if (!scene) { drawTutorial(now); drawDev(); }
     if (msg && now < msg.until) {
       const low = popup === 'order' || popup === 'stock';
       const m = low ? { x: 290, y: 520, w: 380, h: 28 } : { x: 250, y: 66, w: 460, h: 32 };
@@ -997,7 +1027,7 @@ const Game = (function () {
       label(msg.text, m.x + m.w / 2, m.y + m.h / 2, C.ink, 'center');
     }
     if (toast && now > toast.until) toast = null;
-    if (!toast && toasts.length) { toast = { a: toasts.shift(), until: now + (toasts.length > 2 ? 1.2 : 2.5) }; Sound.sfx('fanfare'); }
+    if (!toast && toasts.length && !scene) { toast = { a: toasts.shift(), until: now + (toasts.length > 2 ? 1.2 : 2.5) }; Sound.sfx('fanfare'); }
     if (toast) {
       UI.panel({ x: 150, y: 8, w: 420, h: 42 }, '#fff6cf', 3); // 위쪽 정보 줄에 띄워 가게의 버튼을 가리지 않는다
       label('도전과제 달성! ' + toast.a.name, 360, 20, C.ink, 'center');

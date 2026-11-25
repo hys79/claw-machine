@@ -64,9 +64,28 @@ const Sim = (function () {
     const S = Z.SHOW.special;
     return day <= S.first ? S.first : S.first + Math.ceil((day - S.first) / S.every) * S.every;
   }
+  // ---------- 날짜 ----------
+  const DAY_MS = 86400000;
+  const startMs = () => Date.UTC(Z.START_DATE[0], Z.START_DATE[1] - 1, Z.START_DATE[2]);
+  function dateOf(day) { const d = new Date(startMs() + (day - 1) * DAY_MS); return { y: d.getUTCFullYear(), m: d.getUTCMonth() + 1, d: d.getUTCDate() }; }
+  const dayOf = (y, m, d) => Math.round((Date.UTC(y, m - 1, d) - startMs()) / DAY_MS) + 1;
+  const seasonOf = (day) => ['winter', 'winter', 'spring', 'spring', 'spring', 'summer', 'summer', 'summer', 'autumn', 'autumn', 'autumn', 'winter'][dateOf(day).m - 1];
+  function holidayOf(day) {
+    const y = dateOf(day).y;
+    return DATA.HOLIDAYS.find((h) => [y - 1, y, y + 1].some((yy) => {
+      const base = h.dates ? h.dates[yy] : h.date;
+      if (!base) return false;
+      const k = day - dayOf(yy, base[0], base[1]);
+      return k >= -(h.before || 0) && k <= (h.after || 0);
+    })) || null;
+  }
+
   // 동네 행사: 매주 평일(화~금) 하루. 네 주 동안 네 행사가 한 번씩 돌아오고 순서는 가게마다 다르다.
   // 그 취향의 인형을 아직 구할 수 없는 랭크라면 그 주는 쉰다.
+  // 날짜 행사가 있는 날은 그것이 동네 행사를 대신한다.
   function eventOf(st, day) {
+    const holiday = holidayOf(day);
+    if (holiday) return holiday;
     const week = Math.floor((day - 1) / 7) - Z.EVENT.firstWeek, n = DATA.EVENTS.length;
     if (week < 0) return null;
     if (dowOf(day) !== 1 + Math.floor(makeRng(st.seed * 131 + week * 977 + 11)() * 4)) return null;
@@ -486,9 +505,10 @@ const Sim = (function () {
       const taste = st.trend.next || pickT(null);
       st.trend = { taste, next: pickT(taste), until: st.day + Z.TREND.days };
     }
-    const w = rng.pickW(Z.WEATHER, Z.WEATHER.map((x) => x[1]));
-    st.weather = w[0];
-    st.env = { weather: w[0], weatherMult: w[2], show: isShowDay(st.day), special: isSpecialDay(st.day), dow: dowOf(st.day) };
+    const odds = Z.WEATHER_MONTH[dateOf(st.day).m - 1];
+    const w = rng.pickW(['sunny', 'cloudy', 'rain', 'snow', 'heat'], odds);
+    st.weather = w;
+    st.env = { weather: w, weatherMult: Z.WEATHER_MULT[w], show: isShowDay(st.day), special: isSpecialDay(st.day), dow: dowOf(st.day) };
     return st.env;
   }
 
@@ -496,7 +516,7 @@ const Sim = (function () {
   function repMult(st) { return Z.REP_MULT[0] + (Z.REP_MULT[1] - Z.REP_MULT[0]) * (st.reputation / 100); }
   function expectedVisitors(st, env) {
     const showMult = env.special ? Z.SHOW.special.dayMult : (env.show ? Z.SHOW.dayMult : 1);
-    const eventMult = eventOf(st, st.day) ? Z.EVENT.dayMult : 1;
+    const event = eventOf(st, st.day), eventMult = event ? event.dayMult || Z.EVENT.dayMult : 1;
     return Z.BASE_VISITORS * Z.DOW[env.dow] * env.weatherMult * repMult(st) * shopLv(st).foot * (0.5 + 0.5 * machineVariety(st)) * eyeCatch(st) * showMult * eventMult;
   }
   function forecast(st) { return Math.round(expectedVisitors(st, st.env || startOfDay(st))); }
@@ -552,7 +572,7 @@ const Sim = (function () {
     const showHour = env.special ? Z.SHOW.special.mult : (env.show ? Z.SHOW.mult : 1);
     const event = eventOf(st, st.day), vipAt = influencerTick(st);
     R.event = event ? event.id : null;
-    const hourMult = (h) => Z.HOUR_W[h - Z.OPEN] * (h >= showFrom && h < showTo ? showHour : 1) * (event && h >= event.hours[0] && h < event.hours[1] ? Z.EVENT.mult : 1);
+    const hourMult = (h) => Z.HOUR_W[h - Z.OPEN] * (h >= showFrom && h < showTo ? showHour : 1) * (event && event.hours && h >= event.hours[0] && h < event.hours[1] ? Z.EVENT.mult : 1);
     const visitorsToday = expectedVisitors(st, env);
     let wsum = 0; for (let h = Z.OPEN; h < Z.CLOSE; h++) wsum += hourMult(h);
     R.expected = Math.round(visitorsToday);
@@ -1056,6 +1076,6 @@ const Sim = (function () {
     buyMachine, sellMachine, buyEquipment, expandWarehouse, expandShop, hireStaff, setOption, order, unitCost, orderable, nextSpecial,
     loadMachine, unloadAll, refill, addStock, sellStock,
     upgradeState, canOpen, canInstall, installMachine, storeMachine, sellBin, sellEquipment, buyDecor, sellDecor, canBuyDecor, decorDef, charm, charmRaw, charmCap, checkAchievements, statValue,
-    info: { capacityOf, exchangerOn, placed, placedBins, canRefill, slotsOf, slotsUsed, loadQty, freeSlots, footUsed, stockTotal, incomingTotal, canHold, grabProb, doll, TICKS, isShowDay, isSpecialDay, eventOf, foreignShare },
+    info: { capacityOf, exchangerOn, placed, placedBins, canRefill, slotsOf, slotsUsed, loadQty, freeSlots, footUsed, stockTotal, incomingTotal, canHold, grabProb, doll, TICKS, isShowDay, isSpecialDay, eventOf, holidayOf, foreignShare, dateOf, dayOf, seasonOf },
   };
 })();
