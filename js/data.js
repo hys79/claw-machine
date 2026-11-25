@@ -207,7 +207,7 @@ DATA.DOLLS = [
   { id: 'rocket', name: '콩알 로켓', size: 'S', cost: 700, taste: ['코믹'], hard: 0.0, rank: 1 },
   { id: 'breadduck', name: '식빵 오리', size: 'S', cost: 700, taste: ['음식'], hard: 0.05, rank: 1 },
   { id: 'oldrobot', name: '태엽 로봇', size: 'S', cost: 900, taste: ['코믹'], hard: 0.1, rank: 1 },
-  { id: 'lumikey', name: '루미나 미니 응원인형', size: 'S', cost: 1100, taste: ['아이돌'], hard: 0.05, rank: 2 },
+  { id: 'lumikey', name: '미니 응원인형', size: 'S', cost: 1100, taste: ['아이돌'], hard: 0.05, rank: 2 },
   { id: 'roundbear', name: '동글 곰', size: 'M', cost: 2400, taste: ['동물'], hard: 0.1, rank: 1 },
   { id: 'berrybunny', name: '딸기 토끼', size: 'M', cost: 2600, taste: ['음식'], hard: 0.1, rank: 1 },
   { id: 'penguin', name: '펭귄 반장', size: 'M', cost: 2500, taste: ['코믹'], hard: 0.1, rank: 1 },
@@ -216,10 +216,10 @@ DATA.DOLLS = [
   { id: 'rainbowsheep', name: '무지개 양', size: 'M', cost: 4200, taste: ['희귀'], hard: 0.3, rank: 2 },
   { id: 'moonrabbit', name: '달토끼 요정', size: 'M', cost: 4500, taste: ['희귀'], hard: 0.3, rank: 2 },
   { id: 'goldpig', name: '황금 저금 돼지', size: 'M', cost: 5500, taste: ['희귀'], hard: 0.3, rank: 3 },
-  { id: 'lumidol', name: '루미나 멤버 인형', size: 'M', cost: 3800, taste: ['아이돌'], hard: 0.15, rank: 2 },
+  { id: 'lumidol', name: '아이돌 멤버 인형', size: 'M', cost: 3800, taste: ['아이돌'], hard: 0.15, rank: 2 },
   { id: 'bigbear', name: '뭉치 곰', size: 'L', cost: 7500, taste: ['동물'], hard: 0.1, rank: 1 },
   { id: 'bigburger', name: '왕 햄버거 쿠션', size: 'L', cost: 8000, taste: ['음식'], hard: 0.15, rank: 1 },
-  { id: 'cheerbear', name: '루미나 응원봉 곰', size: 'L', cost: 10000, taste: ['아이돌'], hard: 0.2, rank: 2 },
+  { id: 'cheerbear', name: '응원봉 곰', size: 'L', cost: 10000, taste: ['아이돌'], hard: 0.2, rank: 2 },
   { id: 'bigoctopus', name: '대왕 문어', size: 'L', cost: 7800, taste: ['코믹'], hard: 0.15, rank: 1 },
   { id: 'classicbear', name: '빈티지 태엽 곰', size: 'L', cost: 11000, taste: ['희귀'], hard: 0.25, rank: 3 },
   { id: 'stagebear', name: '특별 무대 응원 곰', size: 'M', cost: 4800, taste: ['아이돌'], hard: 0.2, rank: 2, special: true },
@@ -230,7 +230,7 @@ DATA.DOLLS = [
   { id: 'mooncake', name: '달떡 토끼 쿠션', size: 'L', cost: 8200, taste: ['음식'], hard: 0.15, rank: 1, locked: true },
   { id: 'megabear', name: '거대 뭉치 곰', size: 'XL', cost: 28000, taste: ['동물'], hard: 0, rank: 3 },
   { id: 'jumborobot', name: '초대형 태엽 로봇', size: 'XL', cost: 34000, taste: ['코믹'], hard: 0, rank: 3 },
-  { id: 'jumboidol', name: '루미나 점보 마스코트', size: 'XL', cost: 36000, taste: ['아이돌'], hard: 0, rank: 3 },
+  { id: 'jumboidol', name: '아이돌 점보 마스코트', size: 'XL', cost: 36000, taste: ['아이돌'], hard: 0, rank: 3 },
 ];
 
 // 기계. sizes: 넣을 수 있는 인형 크기, slots/slotCost: 진열 칸, grab: 크기별 집기 성공 확률(난이도 3 기준),
@@ -296,23 +296,23 @@ DATA.HOLIDAYS = [
   { id: 'childrens', name: '어린이날', short: '어린이날', season: 'spring', day: 19 },
 ];
 
-// 아레나에서 공연하는 아이돌 그룹: 이름만 비튼 패러디(루미나는 아이돌 인형의 가상 그룹). 주간지 소식에만 쓴다.
+// 아레나에서 공연하는 가수·그룹: 이름만 비튼 패러디. 주간지 소식에만 쓴다.
 // 이름 말고는 실제 그룹의 로고·색·멤버·노래를 쓰지 않으며, 소개 문구도 지어낸 것이다.
 DATA.IDOLS = [
-  { name: '루미나', note: '반짝이는 무대로 유명한 5인조' },
   { name: 'MMIXX', note: '노래가 중간에 확 바뀌는 무대가 특기' },
   { name: '화이트핑크', note: '해외 팬이 구름처럼 몰리는 4인조' },
   { name: 'ATS', note: '전 세계를 도는 7인조 월드 투어' },
   { name: '올드진스', note: '편안한 옛날 감성으로 인기몰이' },
-  { name: '비스파', note: '가상 세계 콘셉트의 4인조' },
+  { name: '에스퍼', note: '가상 세계 콘셉트의 4인조' },
   { name: 'OVE', note: '당당한 분위기의 6인조' },
-  { name: '라세라핌', note: '칼군무로 소문난 5인조' },
-  { name: 'THWICE', note: '따라 하기 쉬운 후렴의 장인' },
+  { name: '투와이스', note: '따라 하기 쉬운 후렴의 장인' },
   { name: 'SIXTEEN', note: '인원이 많아 무대가 꽉 차는 팀' },
   { name: '블루벨벳', note: '상큼함과 차분함을 오가는 5인조' },
-  { name: 'OXO', note: '오랜 팬이 탄탄한 선배 그룹' },
-  { name: 'PNG', note: '청춘 이야기를 노래하는 5인조' },
+  { name: 'EXE', note: '오랜 팬이 탄탄한 선배 그룹' },
   { name: 'SMALLBANG', note: '돌아온다는 소식에 상권이 들썩' },
+  { name: '싸이버거', note: '관객이 다 같이 뛰는 공연의 대명사' },
+  { name: '어른이유', note: '잔잔한 목소리로 아레나를 채우는 솔로 가수' },
+  { name: '근령이와아이들', note: '한 시대를 풍미한 전설의 팀' },
 ];
 
 // 영업 시작 뒤에 끼어드는 이야기. {trend} 유행 취향, {dolls} 그 취향의 인형 이름
