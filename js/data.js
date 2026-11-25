@@ -265,7 +265,8 @@ DATA.CUSTOMERS = [
 
 // 설비(한 번 사면 영업 중 일이 덜 생긴다). rank: 해금 단계, perMachine: 기계 하나에 다는 개조
 DATA.EQUIPMENT = {
-  bin: { name: '대형 쓰레기통', rank: 1, price: 150000, desc: '청소할 일이 절반으로 준다.' },
+  smallbin: { name: '쓰레기통', rank: 1, price: 30000, desc: '놓을수록 청소할 일이 줄어든다.' },
+  bin: { name: '대형 쓰레기통', rank: 1, price: 150000, desc: '기본 쓰레기통의 두 배를 담는다.' },
   exchanger: { name: '자동환전기', rank: 2, price: 600000, desc: '환전 요청이 크게 준다.' },
   globalpay: { name: '해외결제 시스템', rank: 3, price: 500000, desc: 'K-pop 팬의 환전 요청이 없어지고, K-pop 팬이 더 온다.' },
   robot: { name: '로봇 청소기', rank: 4, price: 1200000, desc: '청소할 일이 대부분 없어진다.' },

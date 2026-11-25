@@ -23,7 +23,7 @@ const pad = (s, n) => String(s).padStart(n, ' ');
 
 // 자동 운영 규칙(검증용): 단계별 성장안 순서대로, 여유 자금이 남으면 산다.
 const PLAN = [
-  ['equip', 'bin'], ['machine', 'standard'],
+  ['machine', 'standard'], ['equip', 'bin'],
   ['shop', 1], ['equip', 'exchanger'], ['machine', 'standard'],
   ['machine', 'timer'], ['equip', 'globalpay'], ['staff'],
   ['shop', 2], ['machine', 'big'], ['machine', 'standard'], ['equip', 'robot'], ['mod', 'durable'], ['mod', 'capacity'],
@@ -33,7 +33,8 @@ function autoGrow(st, done) {
   if (has('--nobuy')) return;
   // 하루에 뽑혀 나가는 인형이 창고 용량에 가까워지면 창고를 넓힌다
   const wins = st.lastWins || 0;
-  if (wins > CFG.SIM.WAREHOUSE[st.warehouseLevel].cap * 0.6) Sim.expandWarehouse(st);
+  const nextWh = CFG.SIM.WAREHOUSE[st.warehouseLevel + 1];
+  if (nextWh && wins > CFG.SIM.WAREHOUSE[st.warehouseLevel].cap * 0.6 && st.money > nextWh.cost + 600000) Sim.expandWarehouse(st); // 발주할 돈은 남긴다
   const keep = 300000 + st.machines.length * 120000; // 발주할 돈은 남긴다
   for (let i = 0; i < PLAN.length; i++) {
     if (done[i]) continue;

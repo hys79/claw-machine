@@ -50,7 +50,10 @@ const Sim = (function () {
   const loadQty = (m) => { let n = 0; Object.keys(m.load).forEach((id) => { n += m.load[id].qty; }); return n; };
   const loadedIds = (m) => Object.keys(m.load).filter((id) => m.load[id].qty > 0);
   const canHold = (m, d) => mdef(m).sizes.indexOf(d.size) >= 0;
-  const footUsed = (st) => st.machines.reduce((n, m) => n + mdef(m).footprint, 0);
+  const placed = (st) => st.machines.filter((m) => !m.stored); // 가게에 설치한 기계(창고에 넣은 것은 제외)
+  const placedBins = (st) => st.bins.filter((b) => !b.stored);
+  const robotOn = (st) => !!st.equip.robot && !(st.fix && st.fix.robot && st.fix.robot.stored);
+  const footUsed = (st) => placed(st).reduce((n, m) => n + mdef(m).footprint, 0);
   const stockTotal = (st) => Object.keys(st.stock).reduce((n, id) => n + st.stock[id].qty, 0);
   const incomingTotal = (st) => st.incoming.reduce((n, o) => n + o.qty, 0);
   const dowOf = (day) => (day - 1) % 7; // 0 = 월
@@ -71,7 +74,9 @@ const Sim = (function () {
   }
 
   // ---------- 새 게임 ----------
-  function newGame(playerName, shopName, seed) {
+  // opts.stored: 개업 물품을 창고에 넣고 시작한다(게임). 검증 도구는 설치된 채로 시작한다.
+  function newGame(playerName, shopName, seed, opts) {
+    const stored = !!(opts && opts.stored);
     const st = {
       v: 2, seed: seed == null ? (Date.now() & 0x7fffffff) : seed, playerName: playerName || '', shopName: shopName || '',
       day: 1, money: CFG.START_MONEY, rank: 1, shopLevel: 0, warehouseLevel: 0, reputation: Z.START_REP, popularity: 0,
@@ -79,10 +84,13 @@ const Sim = (function () {
       trend: { taste: null, next: null, until: 0 }, history: [], nextId: 1,
       rankUpDay: 0, expandDay: 0, champion: false, weather: 'sunny', env: null, bankrupt: false,
     };
+    st.bins = [];
     upgradeState(st);
-    addMachine(st, 'standard');
-    addMachine(st, 'mini');
-    [['chick', 14], ['rocket', 12], ['oldrobot', 6], ['roundbear', 10], ['berrybunny', 8], ['retrofrog', 5], ['bigbear', 2]].forEach(([id, q]) => addStock(st, id, q, doll(id).cost));
+    addMachine(st, 'mini').stored = stored;
+    addMachine(st, 'mini').stored = stored;
+    addBin(st, false).stored = stored;
+    st.tutorial = stored ? 0 : 'done';
+    [['chick', 18], ['rocket', 14], ['breadduck', 10], ['oldrobot', 8], ['roundbear', 6], ['berrybunny', 5]].forEach(([id, q]) => addStock(st, id, q, doll(id).cost));
     startOfDay(st);
     return st;
   }
@@ -90,6 +98,12 @@ const Sim = (function () {
   // 이전 저장에도 새 항목을 채워 준다
   function upgradeState(st) {
     st.decors = st.decors || [];
+    st.fix = st.fix || {};
+    if (!st.bins) { // 예전 저장: 고정 쓰레기통을 물품으로 바꾼다
+      st.bins = [{ uid: st.nextId++, big: !!(st.equip && st.equip.bin), pos: (st.fix.trash && st.fix.trash.pos) || null, stored: false }];
+      delete st.fix.trash; if (st.equip) delete st.equip.bin;
+    }
+    if (st.tutorial === undefined) st.tutorial = 'done';
     st.ach = st.ach || {};
     st.unlocked = st.unlocked || {};
     st.used = st.used || {};     // 지난 영업일에 뽑혀 나간 인형 수(창고의 '모자랄 인형' 경고)
@@ -97,11 +111,50 @@ const Sim = (function () {
     return st;
   }
 
+  // ---------- 설치물(창고 ↔ 가게) ----------
+  function addBin(st, big) { const b = { uid: st.nextId++, big, pos: null, stored: false }; st.bins.push(b); return b; }
+  function canInstall(st, m) {
+    return footUsed(st) + mdef(m).footprint <= shopLv(st).slots ? { ok: true } : { ok: false, why: '기계 칸이 모자라요. 가게를 넓히거나 다른 기계를 넣어 주세요' };
+  }
+  function installMachine(st, id) {
+    const m = st.machines.find((x) => x.id === id);
+    if (!m || !m.stored) return { ok: false, why: '창고에 없는 기계예요' };
+    const c = canInstall(st, m);
+    if (c.ok) m.stored = false;
+    return c;
+  }
+  function storeMachine(st, id) { // 안의 인형은 창고로 돌아간다
+    const m = st.machines.find((x) => x.id === id);
+    if (!m) return { ok: false, why: '없는 기계' };
+    unloadAll(st, m); m.stored = true; m.pos = null;
+    return { ok: true };
+  }
+  function sellBin(st, uid) {
+    const i = st.bins.findIndex((b) => b.uid === uid);
+    if (i < 0) return { ok: false, why: '없는 쓰레기통' };
+    if (st.bins.length <= 1) return { ok: false, why: '쓰레기통은 하나 이상 있어야 해요' };
+    const gain = Math.round(DATA.EQUIPMENT[st.bins[i].big ? 'bin' : 'smallbin'].price * Z.DECOR.SELL);
+    st.bins.splice(i, 1); st.money += gain;
+    return { ok: true, gain };
+  }
+  function sellEquipment(st, key) { // 자동환전기, 로봇 청소기
+    if (!st.equip[key]) return { ok: false, why: '없는 설비' };
+    const gain = Math.round(DATA.EQUIPMENT[key].price * Z.DECOR.SELL);
+    delete st.equip[key]; delete st.fix[key]; st.money += gain;
+    return { ok: true, gain };
+  }
+  // 영업을 시작할 수 있는지: 기계와 쓰레기통이 하나 이상 설치되어 있어야 한다
+  function canOpen(st) {
+    if (!placed(st).length) return { ok: false, why: '인형뽑기 기계를 하나 이상 설치해 주세요' };
+    if (!placedBins(st).length) return { ok: false, why: '쓰레기통을 하나 이상 설치해 주세요' };
+    return { ok: true };
+  }
+
   // ---------- 소품 ----------
   const decorDef = (id) => DATA.DECOR.find((d) => d.id === id);
   function charmRaw(st) { // 같은 소품은 두 번째부터 효과가 줄어든다
     const n = {};
-    return st.decors.reduce((s, o) => { const d = decorDef(o.id); if (!d) return s; const k = n[o.id] || 0; n[o.id] = k + 1; return s + d.charm * Math.pow(Z.DECOR.DUP, k); }, 0);
+    return st.decors.filter((o) => !o.stored).reduce((s, o) => { const d = decorDef(o.id); if (!d) return s; const k = n[o.id] || 0; n[o.id] = k + 1; return s + d.charm * Math.pow(Z.DECOR.DUP, k); }, 0);
   }
   const charmCap = (st) => Z.DECOR.CAP[st.shopLevel];
   const charm = (st) => Math.min(charmRaw(st), charmCap(st)); // 하루 인기도에 실제로 더해지는 값
@@ -113,12 +166,12 @@ const Sim = (function () {
     if (st.money < d.price) return NO_MONEY;
     return { ok: true };
   }
-  function addDecor(st, id) { const o = { uid: st.nextId++, id, pos: null }; st.decors.push(o); return o; }
-  function buyDecor(st, id) {
+  function addDecor(st, id, stored) { const o = { uid: st.nextId++, id, pos: null, stored: !!stored }; st.decors.push(o); return o; }
+  function buyDecor(st, id, opts) {
     const c = canBuyDecor(st, id);
     if (!c.ok) return c;
     st.money -= decorDef(id).price;
-    return { ok: true, decor: addDecor(st, id), cost: decorDef(id).price };
+    return { ok: true, decor: addDecor(st, id, opts && opts.store), cost: decorDef(id).price };
   }
   function sellDecor(st, uid) {
     const i = st.decors.findIndex((o) => o.uid === uid);
@@ -156,9 +209,9 @@ const Sim = (function () {
     if (key === 'bestRevenue') return Math.max(s.bestRevenue, live ? live.revenue : 0);
     if (key === 'dollKinds') return Object.keys(s.shown).length;
     if (key === 'machineKinds') return new Set(st.machines.map((m) => m.type)).size;
-    if (key === 'decorCount') return st.decors.length;
+    if (key === 'decorCount') return st.decors.filter((o) => !o.stored).length;
     if (key === 'charm') return charmRaw(st);
-    if (key === 'statue') return st.decors.some((o) => o.id === 'goldstatue') ? 1 : 0;
+    if (key === 'statue') return st.decors.some((o) => o.id === 'goldstatue' && !o.stored) ? 1 : 0;
     return s[key] || 0;
   }
   // 새로 달성한 도전과제를 돌려주고 보상을 지급한다. live: 영업 중이면 그날의 진행 결과
@@ -170,7 +223,7 @@ const Sim = (function () {
       const r = a.reward;
       if (r.money) st.money += r.money;
       if (r.doll) st.unlocked[r.doll] = true;
-      if (r.decor) addDecor(st, r.decor);
+      if (r.decor) addDecor(st, r.decor, true); // 보상 소품은 창고로
       out.push(a);
     });
     return out;
@@ -194,18 +247,21 @@ const Sim = (function () {
   const NO_MONEY = { ok: false, why: '돈이 부족해요' };
   const NO_RANK = { ok: false, why: '가게 랭크가 더 필요해요' };
 
-  function buyMachine(st, type) {
+  function buyMachine(st, type, opts) {
+    const store = !!(opts && opts.store);
     const def = DATA.MACHINES[type];
     if (!def) return { ok: false, why: '없는 기계' };
     if (def.rank > st.rank) return NO_RANK;
-    if (footUsed(st) + def.footprint > shopLv(st).slots) return { ok: false, why: '점포에 자리가 없어요' };
+    if (!store && footUsed(st) + def.footprint > shopLv(st).slots) return { ok: false, why: '점포에 자리가 없어요' };
     if (!pay(st, def.price)) return NO_MONEY;
-    return { ok: true, machine: addMachine(st, type), cost: def.price };
+    const m = addMachine(st, type); m.stored = store;
+    return { ok: true, machine: m, cost: def.price };
   }
   // 기계 팔기: 구입가의 40%(중고). 안의 인형은 창고로 돌아간다.
   function sellMachine(st, id) {
     const i = st.machines.findIndex((m) => m.id === id);
     if (i < 0) return { ok: false, why: '없는 기계' };
+    if (st.machines.length <= 1) return { ok: false, why: '기계는 한 대 이상 있어야 해요' };
     unloadAll(st, st.machines[i]);
     const gain = Math.round(mdef(st.machines[i]).price * 0.4);
     st.machines.splice(i, 1);
@@ -213,10 +269,15 @@ const Sim = (function () {
     return { ok: true, gain };
   }
   // 설비: 가게 전체 설비는 key만, 기계 개조(perMachine)는 machineId도 준다.
-  function buyEquipment(st, key, machineId) {
+  function buyEquipment(st, key, machineId, opts) {
     const e = DATA.EQUIPMENT[key];
     if (!e) return { ok: false, why: '없는 설비' };
     if (e.rank > st.rank) return NO_RANK;
+    if (key === 'bin' || key === 'smallbin') { // 쓰레기통은 여러 개 놓을 수 있는 물품
+      if (!pay(st, e.price)) return NO_MONEY;
+      addBin(st, key === 'bin').stored = !!(opts && opts.store);
+      return { ok: true, cost: e.price };
+    }
     if (e.perMachine) {
       const m = st.machines.find((x) => x.id === machineId);
       if (!m) return { ok: false, why: '기계를 골라 주세요' };
@@ -228,6 +289,7 @@ const Sim = (function () {
       if (st.equip[key]) return { ok: false, why: '이미 있어요' };
       if (!pay(st, e.price)) return NO_MONEY;
       st.equip[key] = true;
+      if (key === 'robot') st.fix.robot = { pos: null, stored: !!(opts && opts.store) };
     }
     return { ok: true, cost: e.price };
   }
@@ -373,13 +435,13 @@ const Sim = (function () {
   // 초대형 인형을 채운 기계가 있으면 지나가던 사람이 들어온다(기계당 +8%, 최대 +16%)
   function eyeCatch(st) {
     let n = 0;
-    st.machines.forEach((m) => { loadedIds(m).forEach((id) => { if (doll(id).size === 'XL') n++; }); });
+    placed(st).forEach((m) => { loadedIds(m).forEach((id) => { if (doll(id).size === 'XL') n++; }); });
     return 1 + Math.min(n, 2) * 0.08;
   }
   // 기계/인형이 다양할수록(최대 1) 손님이 많이 들어온다
   function machineVariety(st) {
     const types = {}, dolls = {};
-    st.machines.forEach((m) => { loadedIds(m).forEach((id) => { types[m.type] = 1; dolls[id] = 1; }); });
+    placed(st).forEach((m) => { loadedIds(m).forEach((id) => { types[m.type] = 1; dolls[id] = 1; }); });
     return clamp((Object.keys(dolls).length / 8) * 0.7 + (Object.keys(types).length / 3) * 0.3, 0.15, 1);
   }
 
@@ -390,9 +452,10 @@ const Sim = (function () {
     const mode = opts.mode || 'manual';
     const delay = mode === 'manual' ? Infinity : Z.RESPOND[mode];
     const env = st.env || startOfDay(st);
-    if (deliver(st)) st.machines.forEach((m) => refill(st, m)); // 아침 입고분을 진열한다
     upgradeState(st);
-    st.machines.forEach((m) => loadedIds(m).forEach((id) => { st.stats.shown[id] = 1; }));
+    if (deliver(st)) placed(st).forEach((m) => refill(st, m)); // 아침 입고분을 진열한다
+    upgradeState(st);
+    placed(st).forEach((m) => loadedIds(m).forEach((id) => { st.stats.shown[id] = 1; }));
     const rng = makeRng(st.seed * 1000003 + st.day * 17 + 3);
     let events = [];
     const ev = (type, o) => { events.push(Object.assign({ t, type }, o)); };
@@ -408,7 +471,7 @@ const Sim = (function () {
     custTypes.forEach((c) => { R.byType[c.id] = { visitors: 0, plays: 0, revenue: 0 }; });
     DATA.TASTES.forEach((x) => { R.missed[x] = 0; });
 
-    const mrt = st.machines.map((m) => {
+    const mrt = placed(st).map((m) => {
       const def = mdef(m);
       const pb = clamp(Z.BREAK_BASE + m.age * Z.BREAK_AGE, 0, Z.BREAK_MAX) * (m.mods.durable ? Z.DURABLE_MULT : 1);
       const brk = rng() < pb ? Math.floor(rng() * (TICKS - 60)) + 30 : -1;
@@ -428,6 +491,8 @@ const Sim = (function () {
     let tasks = [];          // 처리할 일: {type, m(기계 번호 또는 null), t(생긴 시각)}
     let waiting = [];        // 환전을 기다리는 손님
 
+    // 쓰레기통이 담는 양: 놓은 쓰레기통이 많고 클수록 청소할 일이 늦게 생긴다
+    const litterLimit = Z.LITTER.task * Math.max(1, placedBins(st).reduce((s, b) => s + (b.big ? Z.LITTER.binMult : 1), 0));
     const findTask = (type, mid) => tasks.find((k) => k.type === type && k.m === mid);
     function addTask(type, mid) {
       if (findTask(type, mid)) return;
@@ -469,7 +534,7 @@ const Sim = (function () {
     function pickLitter() {
       if (litter > 0) litter--;
       const k = findTask('clean', null);
-      if (k && litter < Z.LITTER.task * (st.equip.bin ? Z.LITTER.binMult : 1)) { if (t - k.t > Z.FAST_TASK) R.lateTasks++; dropTask('clean', null); }
+      if (k && litter < litterLimit) { if (t - k.t > Z.FAST_TASK) R.lateTasks++; dropTask('clean', null); }
       return litter;
     }
 
@@ -531,10 +596,10 @@ const Sim = (function () {
       c.sat = clamp(c.sat, 0, 1);
       R.satSum += c.sat;
       if (c.sat < 0.2 && rng() < 0.35) { R.claims++; ev('claim', { c: c.id }); }
-      if (rng() < Z.LITTER.chance * (st.equip.robot ? Z.LITTER.robotKeep : 1)) {
+      if (rng() < Z.LITTER.chance * (robotOn(st) ? Z.LITTER.robotKeep : 1)) {
         litter++;
         ev('litter', { c: c.id });
-        if (litter >= Z.LITTER.task * (st.equip.bin ? Z.LITTER.binMult : 1)) addTask('clean', null);
+        if (litter >= litterLimit) addTask('clean', null);
       }
       ev('leave', { c: c.id, why, plays: c.plays, wins: c.wins, spent: c.spent });
     }
@@ -732,6 +797,8 @@ const Sim = (function () {
 
   // ---------- 건너뛰기 ----------
   function canSkip(st) {
+    const o = canOpen(st);
+    if (!o.ok) return o;
     if (!st.staff) return { ok: false, why: '직원을 고용하면 건너뛸 수 있어요' };
     if (st.day === 1) return { ok: false, why: '첫 영업일이에요' };
     if (st.day === st.rankUpDay) return { ok: false, why: '승급한 뒤 첫 영업일이에요' };
@@ -763,7 +830,7 @@ const Sim = (function () {
     const avail = DATA.DOLLS.filter((d) => orderable(st, d) || st.stock[d.id]);
     const covered = {}; // 가게 전체에서 취향이 몇 번 진열됐는지(골고루 갖추기)
     const need = {};
-    st.machines.forEach((m) => {
+    placed(st).forEach((m) => {
       const def = mdef(m);
       let cand = avail.filter((d) => canHold(m, d));
       if (def.kind === 'timer') { // 초대형은 하나뿐이라 지금 가진 인형이 있으면 그중에서 고른다(비는 날이 없게)
@@ -817,8 +884,8 @@ const Sim = (function () {
     });
     if (o.order === false) buy.length = 0; // 발주 없이 진열만
     if (buy.length) order(st, buy);
-    st.machines.forEach((m) => unloadAll(st, m)); // 아침마다 계획대로 다시 진열한다
-    st.machines.forEach((m) => refill(st, m));
+    placed(st).forEach((m) => unloadAll(st, m)); // 아침마다 계획대로 다시 진열한다
+    placed(st).forEach((m) => refill(st, m));
     return { ordered: buy };
   }
 
@@ -860,7 +927,7 @@ const Sim = (function () {
     newGame, startOfDay, openDay, runDay, canSkip, skipDay, forecast, autoPrep,
     buyMachine, sellMachine, buyEquipment, expandWarehouse, expandShop, hireStaff, setOption, order, unitCost, orderable, nextSpecial,
     loadMachine, unloadAll, refill, addStock, sellStock,
-    upgradeState, buyDecor, sellDecor, canBuyDecor, decorDef, charm, charmRaw, charmCap, checkAchievements, statValue,
-    info: { canRefill, slotsOf, slotsUsed, loadQty, freeSlots, footUsed, stockTotal, incomingTotal, canHold, grabProb, doll, TICKS, isShowDay, isSpecialDay },
+    upgradeState, canOpen, canInstall, installMachine, storeMachine, sellBin, sellEquipment, buyDecor, sellDecor, canBuyDecor, decorDef, charm, charmRaw, charmCap, checkAchievements, statValue,
+    info: { placed, placedBins, canRefill, slotsOf, slotsUsed, loadQty, freeSlots, footUsed, stockTotal, incomingTotal, canHold, grabProb, doll, TICKS, isShowDay, isSpecialDay },
   };
 })();

@@ -174,7 +174,11 @@ const Actors = (function () {
   const go = (cell) => ({ go: feet(cell) });
   const work = (anim, sec, end) => ({ anim, sec, end });
   function plan(j, day, hooks) {
-    const trash = () => frontCell('ftrash');
+    const trash = () => { // 가장 가까운 쓰레기통 앞
+      const cells = Sim.info.placedBins(st).map((b) => frontCell('b' + b.uid));
+      const dist = (c) => { const p = feet(c); return Math.hypot(p.x - hero.x, p.y - hero.y); };
+      return cells.sort((a, b) => dist(a) - dist(b))[0] || { x: g.door.x, y: g.door.y };
+    };
     const pick = (l) => [{ go: { x: l.x, y: l.y + 2 } }, work('sweep', 0.45, () => { litter = litter.filter((o) => o !== l); hero.carry = 'trash'; hooks.sfx('pop'); })];
     const finish = () => { hooks.done(day.act(j.type, j.m), j); };
     if (j.type === 'refill') return [go(storeCell()), work('take', 0.5, () => { hero.carry = 'box'; hooks.sfx('click'); }), go(frontCell('m' + j.m)), work('pour', 0.9, () => { hero.carry = null; finish(); })];

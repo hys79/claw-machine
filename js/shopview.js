@@ -19,18 +19,20 @@ const ShopView = (function () {
   }
 
   // ---------- 놓는 것 목록 ----------
-  const FIX_NAME = { exchange: '환전대', trash: '쓰레기통', robot: '로봇 청소기' };
-  function things(st) {
-    const list = st.machines.map((m) => ({ key: 'm' + m.id, kind: 'machine', ref: m, holder: m, w: DATA.MACHINES[m.type].footprint }));
+  const FIX_NAME = { exchange: '환전대', robot: '로봇 청소기' };
+  const machineThing = (m) => ({ key: 'm' + m.id, kind: 'machine', ref: m, holder: m, w: DATA.MACHINES[m.type].footprint });
+  const binThing = (b) => ({ key: 'b' + b.uid, kind: 'bin', ref: b, holder: b, w: 1 });
+  const decorThing = (o) => { const d = Sim.decorDef(o.id); return d && { key: 'd' + o.uid, kind: 'decor', ref: o, holder: o, w: d.width, wall: !!d.wall, def: d }; };
+  const fixThing = (st, k) => ({ key: 'f' + k, kind: 'fix', ref: k, holder: st.fix[k], w: 1 });
+  // 모든 설치물(설치한 것 + 창고에 넣은 것). 환전대는 가게에 붙박이다.
+  function everything(st) {
     st.fix = st.fix || {};
-    ['exchange', 'trash'].concat(st.equip.robot ? ['robot'] : []).forEach((k) => {
-      st.fix[k] = st.fix[k] || { pos: null };
-      list.push({ key: 'f' + k, kind: 'fix', ref: k, holder: st.fix[k], w: 1 });
-    });
-    st.decors.forEach((o) => { const d = Sim.decorDef(o.id); if (d) list.push({ key: 'd' + o.uid, kind: 'decor', ref: o, holder: o, w: d.width, wall: !!d.wall, def: d }); });
-    return list;
+    const fix = ['exchange'].concat(st.equip.robot ? ['robot'] : []);
+    fix.forEach((k) => { st.fix[k] = st.fix[k] || { pos: null }; });
+    return st.machines.map(machineThing).concat(st.bins.map(binThing), fix.map((k) => fixThing(st, k)), st.decors.map(decorThing).filter(Boolean));
   }
-
+  const stored = (st) => everything(st).filter((t) => t.holder.stored);
+  function things(st) { return everything(st).filter((t) => !t.holder.stored); }
   // ---------- 배치 규칙 ----------
   const cells = (t, p) => Array.from({ length: t.w }, (_, i) => ({ x: p.x + i, y: p.y }));
   const k = (x, y) => x + ',' + y;
@@ -65,7 +67,7 @@ const ShopView = (function () {
     }
     if ([...front].some((f) => !seen.has(f))) return false;
     return others.concat([Object.assign({}, t, { holder: { pos: { x, y } } })]).every((o) => {
-      if (o.kind !== 'fix' || o.ref === 'robot' || !o.holder.pos) return true;
+      if ((o.kind !== 'fix' && o.kind !== 'bin') || o.ref === 'robot' || !o.holder.pos) return true;
       const p = o.holder.pos;
       return [[1, 0], [-1, 0], [0, 1], [0, -1]].some(([dx, dy]) => seen.has(k(p.x + dx, p.y + dy)));
     });
@@ -78,23 +80,18 @@ const ShopView = (function () {
     for (const y of ys) for (let x = 0; x < g.cols; x++) if (fits(st, t, x, y, others)) return { x, y };
     return null;
   }
-  // 자리가 없거나 규칙에 어긋난 것을 빈 곳에 놓는다. 놓을 곳이 없는 것은 pos가 null(보관)로 남는다.
+  // 설치한 것 가운데 자리가 없거나 규칙에 어긋난 것을 빈 곳에 놓는다. 놓을 곳이 없으면 창고로 보낸다.
   function autoPlace(st) {
-    const list = things(st), done = [];
-    const keep = (t) => { done.push(t); };
-    const order = list.slice().sort((a, b) => (a.kind === 'machine' ? 0 : a.kind === 'fix' ? 1 : 2) - (b.kind === 'machine' ? 0 : b.kind === 'fix' ? 1 : 2));
-    const later = [];
-    order.forEach((t) => { const p = t.holder.pos; if (p && fits(st, t, p.x, p.y, done)) keep(t); else later.push(t); });
-    later.forEach((t) => { t.holder.pos = null; t.holder.pos = findSpot(st, t, done); keep(t); });
-    if (st.machines.some((m) => !m.pos)) { // 기계 자리가 안 나오면 전부 다시 놓는다
-      list.forEach((t) => { t.holder.pos = null; });
-      const again = [];
-      order.sort((a, b) => (a.kind === 'machine' && b.kind === 'machine' ? b.w - a.w : 0)).forEach((t) => { t.holder.pos = findSpot(st, t, again); again.push(t); });
-      st.machines.forEach((m) => { m.pos = m.pos || { x: 0, y: 0 }; });
-    }
+    const rank = (t) => (t.kind === 'machine' ? 0 : t.kind === 'fix' ? 1 : t.kind === 'bin' ? 2 : 3);
+    const done = [], later = [];
+    things(st).sort((a, b) => rank(a) - rank(b)).forEach((t) => { const p = t.holder.pos; if (p && fits(st, t, p.x, p.y, done)) done.push(t); else later.push(t); });
+    later.forEach((t) => {
+      t.holder.pos = null;
+      const p = findSpot(st, t, done);
+      if (p) { t.holder.pos = p; done.push(t); return; }
+      if (t.kind === 'machine') Sim.storeMachine(st, t.ref.id); else t.holder.stored = true;
+    });
   }
-  // 새로 살 것을 놓을 자리가 있는지(사기 전에 확인)
-  function hasRoom(st, t) { return !!findSpot(st, Object.assign({ holder: { pos: null }, key: 'new' }, t), things(st)); }
 
   // ---------- 화면 좌표 ----------
   function rectOf(g, t, pos) {
@@ -102,7 +99,7 @@ const ShopView = (function () {
     const x = g.x + pos.x * CW, y = g.y + pos.y * CH;
     if (t.wall) return { x: x + 4, y: g.y - 56, w: t.w * CW - 8, h: 30 };
     if (t.kind === 'machine') return { x: x + 3, y: y - 26, w: t.w * CW - 6, h: CH + 22 };
-    if (t.kind === 'fix') return { x: x + 8, y: y + 4, w: CW - 16, h: CH - 12 };
+    if (t.kind === 'fix' || t.kind === 'bin') return { x: x + 8, y: y + 4, w: CW - 16, h: CH - 12 };
     return { x: x + 4, y: y - 12, w: t.w * CW - 8, h: CH + 6 };
   }
   const standPoint = (g, m) => ({ x: g.x + (m.pos.x + DATA.MACHINES[m.type].footprint / 2) * CW, y: g.y + (m.pos.y + 2) * CH - 10 });
@@ -170,6 +167,13 @@ const ShopView = (function () {
     if (m.mods.durable) UI.rect(x + 3, y + h - 12, 6, 6, '#ffffff');
   }
 
+  function bin(big, r) {
+    const { x, y, w, h } = r, bw = big ? 34 : 22, bh = big ? 36 : 28;
+    const b = { x: x + (w - bw) / 2, y: y + h - bh, w: bw, h: bh };
+    UI.framed(b, big ? '#3f9a5a' : '#7d8b99', 2);
+    UI.rect(b.x - 2, b.y, b.w + 4, 6, C.ink);
+    UI.rect(b.x + bw / 2 - 5, b.y + 12, 10, 10, '#ffffff');
+  }
   function fixture(st, key, r) {
     const { x, y, w, h } = r;
     if (key === 'exchange') {
@@ -178,12 +182,6 @@ const ShopView = (function () {
       UI.rect(x, y, w, 10, auto ? '#4cc4ba' : '#e0b988');
       if (auto) UI.rect(x + 8, y + 14, w - 16, 10, '#14324d');
       UI.coin(x + w / 2 - 8, y + h - 20, 2);
-    } else if (key === 'trash') {
-      const big = !!st.equip.bin, bw = big ? 34 : 22, bh = big ? 36 : 28;
-      const b = { x: x + (w - bw) / 2, y: y + h - bh, w: bw, h: bh };
-      UI.framed(b, big ? '#3f9a5a' : '#7d8b99', 2);
-      UI.rect(b.x - 2, b.y, b.w + 4, 6, C.ink);
-      UI.rect(b.x + bw / 2 - 5, b.y + 12, 10, 10, '#ffffff');
     } else {
       UI.framed({ x: x + 4, y: y + h - 22, w: w - 8, h: 16 }, '#e4eff8', 2);
       UI.rect(x + w / 2 - 3, y + h - 18, 6, 6, '#2f80d0');
@@ -219,6 +217,7 @@ const ShopView = (function () {
     o = o || {};
     if (t.kind === 'machine') machine(t.ref, r, o);
     else if (t.kind === 'fix') fixture(st, t.ref, r);
+    else if (t.kind === 'bin') bin(t.ref.big, r);
     else decor(t.ref.id, r);
     const x = r.x, y = r.y, w = r.w, h = r.h;
     if (o.selected) [[x - 5, y - 5, w + 10, 3], [x - 5, y + h + 2, w + 10, 3], [x - 5, y - 5, 3, h + 10], [x + w + 2, y - 5, 3, h + 10]].forEach((a) => UI.rect(a[0], a[1], a[2], a[3], '#ffb300'));
@@ -227,5 +226,5 @@ const ShopView = (function () {
   // 앞뒤 순서: 아래 줄에 있는 것이 앞
   const depth = (g, t) => (t.wall ? -1000 : g.y + (t.holder.pos.y + 1) * CH);
 
-  return { CW, CH, FIX_NAME, geom, things, canPlace, autoPlace, hasRoom, rectOf, depth, standPoint, doorPoint, room, thing, dollIcon, TASTE_COLOR };
+  return { CW, CH, FIX_NAME, geom, things, stored, canPlace, autoPlace, rectOf, depth, standPoint, doorPoint, room, thing, dollIcon, TASTE_COLOR };
 })();
