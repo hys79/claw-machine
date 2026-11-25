@@ -181,7 +181,7 @@ const Sim = (function () {
     for (let i = 0; i < Z.BULK.length; i++) if (qty >= Z.BULK[i][0]) { c *= 1 - Z.BULK[i][1]; break; }
     return round10(c);
   }
-  // items: [{id, qty}]. 입고는 다음 날 아침. 창고 용량(재고 + 입고 예정)을 넘으면 발주할 수 없다.
+  // items: [{id, qty}]. 하루를 마친 뒤 주문하면 다음 영업일 아침(openDay)에 들어온다. 창고 용량(재고 + 입고 예정)을 넘으면 발주할 수 없다.
   function order(st, items) {
     let qty = 0, cost = 0;
     const lines = [];
@@ -196,7 +196,7 @@ const Sim = (function () {
     if (!qty) return { ok: false, why: '주문할 인형이 없어요' };
     if (stockTotal(st) + incomingTotal(st) + qty > whLv(st).cap) return { ok: false, why: '창고 공간이 부족해요' };
     if (!pay(st, cost)) return NO_MONEY;
-    lines.forEach((l) => st.incoming.push({ id: l.id, qty: l.qty, unit: l.unit, arrive: st.day + 1 }));
+    lines.forEach((l) => st.incoming.push({ id: l.id, qty: l.qty, unit: l.unit, arrive: st.day })); // 다음 영업일 아침에 들어온다
     return { ok: true, cost, qty };
   }
 
@@ -225,7 +225,7 @@ const Sim = (function () {
       const have = m.load[id] ? m.load[id].qty : 0;
       if (m.plan[id] > have) n += loadMachine(st, m, id, m.plan[id] - have);
     });
-    planned.concat(Object.keys(st.stock)).forEach((id) => { if (freeSlots(m) > 0) n += loadMachine(st, m, id, 999); });
+    if (!m.manual) planned.concat(Object.keys(st.stock)).forEach((id) => { if (freeSlots(m) > 0) n += loadMachine(st, m, id, 999); });
     return n;
   }
 
@@ -242,12 +242,15 @@ const Sim = (function () {
   }
 
   // ---------- 하루의 시작 ----------
-  function startOfDay(st) {
-    // 입고
+  function deliver(st) { // 입고
+    const n = st.incoming.length;
     st.incoming = st.incoming.filter((o) => {
       if (o.arrive <= st.day) { addStock(st, o.id, o.qty, o.unit); return false; }
       return true;
     });
+    return n - st.incoming.length;
+  }
+  function startOfDay(st) {
     const rng = makeRng(st.seed * 7919 + st.day * 31 + 5);
     // 유행 취향: 매주 바뀌고 다음 유행을 미리 알려 준다
     if (st.day >= st.trend.until || !st.trend.taste) {
@@ -288,6 +291,7 @@ const Sim = (function () {
     const mode = opts.mode || 'manual';
     const delay = mode === 'manual' ? Infinity : Z.RESPOND[mode];
     const env = st.env || startOfDay(st);
+    if (deliver(st)) st.machines.forEach((m) => refill(st, m)); // 아침 입고분을 진열한다
     const rng = makeRng(st.seed * 1000003 + st.day * 17 + 3);
     let events = [];
     const ev = (type, o) => { events.push(Object.assign({ t, type }, o)); };
@@ -652,7 +656,7 @@ const Sim = (function () {
         best.taste.forEach((x) => { covered[x] = (covered[x] || 0) + 1; });
       }
       // 칸을 점수 순서대로 돌아가며 채운다
-      m.plan = {};
+      m.plan = {}; m.manual = false;
       let used = 0;
       for (let guard = 0; guard < 200; guard++) {
         let placed = false;
@@ -665,7 +669,8 @@ const Sim = (function () {
       Object.keys(m.plan).forEach((id) => { need[id] = (need[id] || 0) + m.plan[id]; });
     });
     // 부족분 발주(하루 소진을 버틸 여유분: 일반 인형은 진열의 3배, 초대형은 5배)
-    let budget = st.money - reserve, cap = whLv(st).cap - stockTotal(st) - incomingTotal(st);
+    // 돈이 적어도 인형은 사야 장사가 된다: 남겨 두는 돈은 가진 돈의 30%를 넘지 않는다
+    let budget = st.money - Math.min(reserve, Math.max(0, st.money) * 0.3), cap = whLv(st).cap - stockTotal(st) - incomingTotal(st);
     const buy = [];
     const have = (id) => st.machines.reduce((n, m) => n + (m.load[id] ? m.load[id].qty : 0), 0) + (st.stock[id] ? st.stock[id].qty : 0);
     const first = (id) => (doll(id).size === 'XL' ? -1 : have(id) / need[id]); // 초대형은 하나뿐이라 먼저 챙긴다
@@ -682,6 +687,7 @@ const Sim = (function () {
       const aff = Math.min(q, Math.floor(budget / uc));
       if (aff > 0) { buy.push({ id, qty: aff }); budget -= aff * uc; cap -= aff; }
     });
+    if (o.order === false) buy.length = 0; // 발주 없이 진열만
     if (buy.length) order(st, buy);
     st.machines.forEach((m) => unloadAll(st, m)); // 아침마다 계획대로 다시 진열한다
     st.machines.forEach((m) => refill(st, m));

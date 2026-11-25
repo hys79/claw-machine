@@ -8,7 +8,7 @@ const vm = require('vm');
 
 const root = path.join(__dirname, '..', 'js');
 const ctx = vm.createContext({ console, Math, Date, JSON });
-['config.js', 'data.js', 'sim.js'].forEach((f) => vm.runInContext(fs.readFileSync(path.join(root, f), 'utf8'), ctx, { filename: f }));
+['config.js', 'data.js', 'balance.js', 'sim.js'].filter((f) => fs.existsSync(path.join(root, f))).forEach((f) => vm.runInContext(fs.readFileSync(path.join(root, f), 'utf8'), ctx, { filename: f }));
 const Sim = vm.runInContext('Sim', ctx);
 const CFG = vm.runInContext('CFG', ctx);
 const DATA = vm.runInContext('DATA', ctx);

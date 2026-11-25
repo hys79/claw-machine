@@ -751,5 +751,6 @@ const Cutscene = (function () {
     if (fade > 0) { ctx.fillStyle = 'rgba(8,20,34,' + fade + ')'; ctx.fillRect(0, 0, W, H); }
   }
 
-  return { start, draw, advance, submit, skip, active: () => !!st };
+  return { start, draw, advance, submit, skip, active: () => !!st,
+    art: { outlinedImg, drawFacing, ME_FRONT, ME_BACK, ME_WALK, ME_PAL, NPC_PALS } }; // 가게 화면(game.js)이 같은 인물 도트를 쓴다
 })();

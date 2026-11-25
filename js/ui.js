@@ -163,6 +163,13 @@ const UI = (function () {
     else if (label) text(label, b.x + b.w / 2, y + b.h / 2 - 1, o.size || Math.min(26, Math.round(b.h * 0.42)), st.text);
   }
 
+  // 팝업 밑의 버튼이 눌리지 않게 막는 영역(팝업 내용을 그리기 전에 부른다)
+  function block(b) {
+    if (modalOpen) return;
+    const tf = ctx.getTransform();
+    next.push({ x: b.x + tf.e / tf.a, y: b.y + tf.f / tf.d, w: b.w, h: b.h, disabled: true });
+  }
+
   // ---------- 조립 부품 ----------
   // 화면 제목: 큰 글자 + 파란 밑줄 + 작은 부제
   function title(str, cx, y, sub) {
@@ -243,5 +250,5 @@ const UI = (function () {
     if (ready && Math.floor(t * 2) % 2 === 0) text('▼', b.x + b.w - 30, b.y + b.h - 28, 22, C.blue, 'right');
   }
 
-  return { begin, end, setMouse, click, move, release, text, wrap, rect, framed, panel, chip, scrim, hline, button, slider, title, sprite, coin, moneyPill, dialog, font, fitText };
+  return { begin, end, setMouse, click, move, release, text, wrap, rect, framed, panel, chip, scrim, hline, button, slider, title, sprite, coin, moneyPill, dialog, font, fitText, block };
 })();

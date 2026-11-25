@@ -17,7 +17,7 @@
   let scale = 1; // 논리 좌표 → CSS 픽셀
   let pxk = 1;   // 논리 좌표 → 캔버스 실제 픽셀(고해상도 화면에서 글자가 선명하도록 기기 픽셀 수만큼 키운다)
 
-  let screen = 'title'; // title | intro | name | shop
+  let screen = 'title'; // title | intro | name | shop(가게: 건축·영업, js/game.js)
   let modal = null;     // null | help | settings
   let confirmWipe = false;
   let nameError = '';
@@ -117,12 +117,14 @@
 
   // ---------- 화면 전환 ----------
   function go(next) {
+    if (screen === 'shop' && next !== 'shop') Game.leave();
     screen = next;
     setModal(null);
     confirmWipe = false;
     nameError = '';
     showInput(next === 'name', { x: 240, y: 236, w: 480, h: 64 }, CFG.NAME_MAX, '이름 입력');
     if (next !== 'intro') Sound.ambient(null);
+    if (next === 'shop') Game.enter();
     if (next === 'intro') Cutscene.start(ct(), () => { State.data.rankIntro = true; State.save(); go('shop'); }, cutHooks); // 프롤로그 컷신
   }
 
@@ -162,15 +164,18 @@
     UI.setMouse({ x: p.x, y: p.y, on: !e.touches }); // 터치는 호버 없음
     if (UI.click(p)) return;
     if (!modal && screen === 'intro') Cutscene.advance(ct()); // 빈 곳을 눌러도 진행
+    if (!modal && screen === 'shop') Game.press({ x: p.x - OX, y: p.y });
   }
   cv.addEventListener('mousedown', onPress);
   cv.addEventListener('touchstart', onPress, { passive: false });
   cv.addEventListener('mousemove', (e) => { const p = pointer(e); UI.setMouse({ x: p.x, y: p.y, on: true }); });
-  window.addEventListener('mousemove', (e) => { UI.move(pointer(e)); });                       // 슬라이더 드래그(캔버스 밖으로 나가도 계속)
-  cv.addEventListener('touchmove', (e) => { e.preventDefault(); UI.move(pointer(e)); }, { passive: false });
-  window.addEventListener('mouseup', () => UI.release());
-  window.addEventListener('touchend', () => UI.release());
-  window.addEventListener('touchcancel', () => UI.release());
+  const gameDrag = (e) => { const p = pointer(e); UI.move(p); if (screen === 'shop') Game.move({ x: p.x - OX, y: p.y }); };
+  window.addEventListener('mousemove', gameDrag);                       // 슬라이더 드래그(캔버스 밖으로 나가도 계속)
+  cv.addEventListener('touchmove', (e) => { e.preventDefault(); gameDrag(e); }, { passive: false });
+  const release = () => { UI.release(); if (screen === 'shop') Game.release(); };
+  window.addEventListener('mouseup', release);
+  window.addEventListener('touchend', release);
+  window.addEventListener('touchcancel', release);
   cv.addEventListener('mouseleave', () => UI.setMouse({ x: -1, y: -1, on: false }));
   input.addEventListener('input', () => { nameError = ''; });
   input.addEventListener('keydown', (e) => {
@@ -185,6 +190,7 @@
     if (e.key === 'Escape') {
       Sound.sfx('back');
       if (modal) closeModal();
+      else if (screen === 'shop') { if (!Game.escape()) setModal('settings'); }
       else if (screen === 'title' || screen === 'intro') setModal('settings');
       else go('title');
     } else if ((e.key === 'Enter' || e.key === ' ') && e.target !== input && !modal && screen === 'intro') {
@@ -263,23 +269,6 @@
     backButton('돌아가기');
   }
 
-  function drawShop() {
-    const d = State.data;
-    UI.moneyPill(L.moneyPill, won(d.money));
-    UI.title(d.shopName, 480, 92, d.playerName + ' 사장님의 인형뽑기 가게');
-    const card = { x: 240, y: 156, w: 480, h: 232 };
-    UI.panel(card, C.white);
-    const rows = [['가게 랭크', DATA.RANK_NAMES[d.rank - 1] || ''], ['소지금', won(d.money)], ['영업 일차', d.day + '일차']];
-    rows.forEach((r, i) => {
-      const cy = card.y + 44 + i * 70;
-      UI.text(r[0], card.x + 36, cy, 22, C.sub, 'left');
-      UI.text(r[1], card.x + card.w - 36, cy, 24, C.ink, 'right');
-      if (i < rows.length - 1) UI.hline(card.x + 24, cy + 35, card.w - 48);
-    });
-    UI.text('가게 화면은 다음 단계에서 만들어요', 480, 436, 20, C.sub);
-    backButton('타이틀로');
-  }
-
   // 소리 설정 한 줄: [스피커(음소거) 아이콘 버튼] 이름 / 슬라이더 / 퍼센트
   function soundRow(sp, cy, label, key) {
     const snd = Sound.get();
@@ -341,7 +330,7 @@
       soundRow(sp, sp.y + 118, '배경음악', 'bgm');
       soundRow(sp, sp.y + 190, '효과음', 'sfx');
       UI.hline(sp.x + 30, sp.y + 226, sp.w - 60);
-      if (screen === 'intro') {
+      if (screen === 'intro' || screen === 'shop') {
         UI.button({ x: 300, y: sp.y + 246, w: 360, h: 52 }, '타이틀로 나가기', { style: 'secondary', modal: true, onClick: () => go('title') });
       } else if (State.hasSave()) {
         UI.button({ x: 300, y: sp.y + 246, w: 360, h: 52 }, confirmWipe ? '정말 지울까요? 한 번 더' : '처음부터 다시', {
@@ -368,10 +357,11 @@
     ctx.fillRect(0, 0, W, H);
     if (screen === 'title') drawTitle();
     else if (screen === 'intro') drawIntro();
+    else if (screen === 'shop') { Game.draw(ctx, ct(), W, H, OX); drawGearButton(); }
     else {
       ctx.save();
       ctx.translate(OX, 0);
-      if (screen === 'name') drawName(); else drawShop();
+      drawName();
       ctx.restore();
     }
     if (modal) drawModal();

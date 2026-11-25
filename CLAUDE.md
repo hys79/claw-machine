@@ -12,6 +12,8 @@
 - 폰·태블릿 터치로도 플레이 가능해야 한다(버튼 크게, 호버 의존 금지).
 - 경제·손님 계산은 `js/sim.js`(화면과 무관한 순수 코어)에 두고, 수치를 바꾸면 `node tools/simrun.js 60 1 --detail`로 먼저 검증한다.
 
+- 밸런스 수치는 `balance/balance.xlsx`(사용자가 고침) → `python tools/balance.py apply` → `js/balance.js`. 기본값(config.js, data.js)을 바꾸거나 항목을 추가하면 `python tools/balance.py export`로 표를 다시 만들되, 먼저 `apply`해서 사용자의 수정이 사라지지 않게 한다.
+
 ## 화면 테마
 - 전체적으로 8비트 도트풍(픽셀 아트). 흰색 톤 배경에 푸른 계열 버튼(색은 `js/config.js`의 `CFG.COLOR`). 이미지는 확대할 때 뭉개지지 않게 `image-rendering: pixelated`와 정수 배율 스케일을 쓴다.
 - 화면·버튼·색 규칙은 `docs/UI_GUIDE.md`를 따르고, 새 화면의 버튼·창은 `js/ui.js`의 `UI` 부품으로 만든다.
